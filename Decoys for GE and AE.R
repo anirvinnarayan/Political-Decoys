@@ -91,6 +91,16 @@ ggplot(main_min_year, aes(x = Year)) +
     plot.subtitle = element_text(size = 9)
   )
 
+ggsave(
+  filename = "Plots/Main_Minor_overtime.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
 main_min_state <- how_many_main_min %>%
   group_by(State_Name) %>%
   summarise(avg_main_cand = mean(main_cand, na.rm = TRUE),
@@ -111,6 +121,16 @@ ggplot(main_min_state_long, aes(x = State_Name, y = avg_candidates, fill = Candi
         plot.title = element_text(face = "bold"),
         plot.subtitle = element_text(size = 9)
   )
+
+ggsave(
+  filename = "Plots/Main_Minor_state.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
 
 unique_elections <- all_states_elections %>%
   dplyr::select(Year, State_Name, Constituency_Name, Election_Type) %>%
@@ -292,6 +312,9 @@ constituency_metrics_GE <- constituency_metrics %>%
 state_metrics <- constituency_metrics %>%
   group_by(State_Name) %>%
   dplyr::summarize(
+    # how many constituencies
+    constituency_count = n(),
+    
     # number of decoys
     mean_num_decoys = mean(decoy_candidates, na.rm = TRUE),
     median_num_decoys = median(decoy_candidates, na.rm = TRUE),
@@ -304,14 +327,30 @@ state_metrics <- constituency_metrics %>%
     p90_decoy_share = quantile(decoy_share, 0.9, na.rm = TRUE),
     max_decoy_share = max(decoy_share, na.rm = TRUE),
     
-    # how many constituencies
-    constituency_count = n(),
+    # voteshare stuff
+    total_votes = sum(total_votes, na.rm = TRUE),
+    total_votes_to_decoys = sum(total_votes_to_decoys, na.rm = TRUE),
+    overall_decoy_vote_share = (total_votes_to_decoys / total_votes) * 100,
+    
+    # decoys affect outcomes?
+    races_with_decoys = sum(decoy_candidates > 0, na.rm = TRUE),
+    close_races = sum(close_race, na.rm = TRUE),
+    decoy_impact_races = sum(decoy_impact_potential, na.rm = TRUE),
+    
+    # calculate races
+    pct_races_with_decoys = (races_with_decoys / constituency_count) * 100,
+    pct_close_races = (close_races / constituency_count) * 100,
+    pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
+    
+    decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
   )
 
 state_metrics_AE <- constituency_metrics_AE %>%
   group_by(State_Name) %>%
   dplyr::summarize(
+    constituency_count = n(),
+    
     # number of decoys
     mean_num_decoys = mean(decoy_candidates, na.rm = TRUE),
     median_num_decoys = median(decoy_candidates, na.rm = TRUE),
@@ -324,14 +363,30 @@ state_metrics_AE <- constituency_metrics_AE %>%
     p90_decoy_share = quantile(decoy_share, 0.9, na.rm = TRUE),
     max_decoy_share = max(decoy_share, na.rm = TRUE),
     
-    # how many constituencies
-    constituency_count = n(),
+    # voteshare stuff
+    total_votes = sum(total_votes, na.rm = TRUE),
+    total_votes_to_decoys = sum(total_votes_to_decoys, na.rm = TRUE),
+    overall_decoy_vote_share = (total_votes_to_decoys / total_votes) * 100,
+    
+    # decoys affect outcomes?
+    races_with_decoys = sum(decoy_candidates > 0, na.rm = TRUE),
+    close_races = sum(close_race, na.rm = TRUE),
+    decoy_impact_races = sum(decoy_impact_potential, na.rm = TRUE),
+    
+    # calculate races
+    pct_races_with_decoys = (races_with_decoys / constituency_count) * 100,
+    pct_close_races = (close_races / constituency_count) * 100,
+    pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
+    
+    decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
   )
 
 state_metrics_GE <- constituency_metrics_GE %>%
   group_by(State_Name) %>%
   dplyr::summarize(
+    constituency_count = n(),
+    
     # number of decoys
     mean_num_decoys = mean(decoy_candidates, na.rm = TRUE),
     median_num_decoys = median(decoy_candidates, na.rm = TRUE),
@@ -344,13 +399,401 @@ state_metrics_GE <- constituency_metrics_GE %>%
     p90_decoy_share = quantile(decoy_share, 0.9, na.rm = TRUE),
     max_decoy_share = max(decoy_share, na.rm = TRUE),
     
-    # how many constituencies
-    constituency_count = n(),
+    # voteshare stuff
+    total_votes = sum(total_votes, na.rm = TRUE),
+    total_votes_to_decoys = sum(total_votes_to_decoys, na.rm = TRUE),
+    overall_decoy_vote_share = (total_votes_to_decoys / total_votes) * 100,
+    
+    # decoys affect outcomes?
+    races_with_decoys = sum(decoy_candidates > 0, na.rm = TRUE),
+    close_races = sum(close_race, na.rm = TRUE),
+    decoy_impact_races = sum(decoy_impact_potential, na.rm = TRUE),
+    
+    # calculate races
+    pct_races_with_decoys = (races_with_decoys / constituency_count) * 100,
+    pct_close_races = (close_races / constituency_count) * 100,
+    pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
+    
+    decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
   )
 
+### Some more plots
+state_metrics <- state_metrics %>%
+  arrange(desc(mean_decoy_share)) %>%
+  mutate(State_Name = factor(State_Name, levels = State_Name))
+
+state_metrics_AE <- state_metrics_AE %>%
+  arrange(desc(mean_decoy_share)) %>%
+  mutate(State_Name = factor(State_Name, levels = State_Name))
+
+state_metrics_GE <- state_metrics_GE %>%
+  arrange(desc(mean_decoy_share)) %>%
+  mutate(State_Name = factor(State_Name, levels = State_Name))
+
+ggplot(state_metrics, aes(x = State_Name, y = mean_decoy_share)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
+  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
+  labs(
+    title = "Average Share of Decoy Candidates per Election by State",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Proportion of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggsave(
+  filename = "Plots/Decoy_perc_state.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+ggplot(state_metrics_AE, aes(x = State_Name, y = mean_decoy_share)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
+  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
+  labs(
+    title = "Average Share of Decoy Candidates per Election by State (AE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Proportion of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggsave(
+  filename = "Plots/Decoy_perc_state_AE.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+ggplot(state_metrics_GE, aes(x = State_Name, y = mean_decoy_share)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
+  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
+  labs(
+    title = "Average Share of Decoy Candidates per Election by State (GE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Proportion of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggsave(
+  filename = "Plots/Decoy_perc_state_GE.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics %>%
+  mutate(State_Name = fct_reorder(State_Name, -mean_num_decoys)) %>%
+  ggplot(aes(x = State_Name, y = mean_num_decoys)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
+  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
+  labs(
+    title = "Average Number of Decoy Candidates per Election by State",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Number of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+
+ggsave(
+  filename = "Plots/Decoy_number_state.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics_AE %>%
+  mutate(State_Name = fct_reorder(State_Name, -mean_num_decoys)) %>%
+  ggplot(aes(x = State_Name, y = mean_num_decoys)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
+  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
+  labs(
+    title = "Average Number of Decoy Candidates per Election by State (AE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Number of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggsave(
+  filename = "Plots/Decoy_number_state_AE.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics_GE %>%
+  mutate(State_Name = fct_reorder(State_Name, -mean_num_decoys)) %>%
+  ggplot(aes(x = State_Name, y = mean_num_decoys)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
+  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
+  labs(
+    title = "Average Number of Decoy Candidates per Election by State (GE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Number of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggsave(
+  filename = "Plots/Decoy_number_state_GE.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics_long <- state_metrics %>%
+  dplyr::select(State_Name, 
+                `Average Number` = mean_num_decoys, 
+                `Maximum Number` = max_num_decoys,
+                `Average Share` = mean_decoy_share, 
+                `Maximum Share` = max_decoy_share,
+                constituency_count) %>%
+  pivot_longer(cols = c(`Average Number`, `Maximum Number`, `Average Share`, `Maximum Share`),
+               names_to = "Metric", values_to = "Value")
+
+# faceted
+ggplot(state_metrics_long, aes(x = State_Name, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
+  # geom_text(aes(label = round(Value, 3)), position = position_dodge(width = 0.9), 
+  #           vjust = -0.5, size = 2.5) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(
+    title = "Decoy Candidates Metrics by State",
+    subtitle = "States ordered by average share of decoy candidates",
+    x = "State",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
+    strip.background = element_rect(fill = "lightgray", color = NA),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none",
+    panel.spacing = unit(1, "lines"),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+state_year_metrics <- constituency_metrics %>%
+  group_by(State_Name, Year) %>%
+  summarise(
+    decoy_proportion = mean(decoy_candidates/total_candidates, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(state_year_metrics, aes(x = Year, y = decoy_proportion, color = State_Name, group = State_Name)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "Avg Decoy Proportion by State Over Time",
+    x = "Election Year",
+    y = "Average Decoy Proportion",
+    color = "State"
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+
+year_metrics <- state_year_metrics %>%
+  group_by(Year) %>%
+  dplyr::summarize(
+    decoy_proportion = mean(decoy_proportion, na.rm = TRUE), 
+    .groups = "drop"
+  )
+
+ggplot(year_metrics, aes(x = Year, y = decoy_proportion)) +
+  geom_line(color = "red") +
+  geom_point(color = "darkred") +
+  theme_minimal() +
+  labs(
+    title = "Avg Decoy Proportion Over Time (EW)",
+    x = "Election Year",
+    y = "Average Decoy Proportion"
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+
+ggsave(
+  filename = "Plots/Decoy_perc_overtime.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+### Make graphs on how well these candidates did
+state_metrics %>%
+  # reorder
+  mutate(State_Name = fct_reorder(State_Name, overall_decoy_vote_share)) %>%
+  ggplot(aes(x = State_Name, y = overall_decoy_vote_share)) +
+  geom_bar(stat = "identity", fill = "darkblue") +
+  geom_text(aes(label = sprintf("%.1f%%", overall_decoy_vote_share)), 
+            hjust = -0.1, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Votes Captured by Decoy Candidates",
+    subtitle = "Percentage of total votes going to decoy candidates by state",
+    y = "Decoy Vote Share (%)",
+    x = ""
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(
+  filename = "Plots/Decoy_voteshare_state.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics %>%
+  # reorder
+  mutate(State_Name = fct_reorder(State_Name, pct_decoy_impact)) %>%
+  ggplot(aes(x = State_Name, y = pct_decoy_impact)) +
+  geom_bar(stat = "identity", fill = "firebrick") +
+  geom_text(aes(label = sprintf("%.1f%%", pct_decoy_impact)), 
+            hjust = -0.1, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Races Where Decoys Could Have Changed Outcomes",
+    subtitle = "Percentage of races where decoy votes exceeded winning margin",
+    y = "Percentage of Races (%)",
+    x = ""
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(
+  filename = "Plots/Decoy_voteshare_state_margin.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+state_metrics_for_viz <- state_metrics %>%
+  dplyr::select(State_Name, pct_close_races, pct_decoy_impact) %>%
+  tidyr::pivot_longer(
+    cols = c(pct_close_races, pct_decoy_impact),
+    names_to = "metric",
+    values_to = "percentage"
+  ) %>%
+  mutate(
+    metric = case_when(
+      metric == "pct_close_races" ~ "Close Races (<5% margin)",
+      metric == "pct_decoy_impact" ~ "Races Where Decoys Matter",
+      TRUE ~ metric
+    ),
+    State_Name = fct_reorder(State_Name, percentage, .fun = max)
+  )
+
+ggplot(state_metrics_for_viz, aes(x = State_Name, y = percentage, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("darkblue", "red")) +
+  coord_flip() +
+  labs(
+    title = "Close Races vs. Decoy Impact Races",
+    subtitle = "Comparing races with tight margins to those where decoys could matter",
+    y = "Percentage of Total Races (%)",
+    x = "",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(
+  filename = "Plots/Decoy_voteshare_state_impact.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
 ### Placebo Test - to see whether similarity is distributed differently across major and minor cands
-# placebo for all_states_GE_1
 placebo_results <- list()
 
 constituency_year_counts <- data.frame(
@@ -366,14 +809,27 @@ constituency_year_counts <- data.frame(
   minor_minor_fps = numeric()
 )
 
-for (i in 1:nrow(unique_elections)) {
-  year <- unique_elections$Year[i]
-  constituency <- unique_elections$Constituency_Name[i]
-  state <- unique_elections$State_Name[i]
-  election_type <- unique_elections$Election_Type[i]
+for (i in 1:nrow(unique_elections)) { 
+  year <- unique_elections$Year[i] 
+  constituency <- unique_elections$Constituency_Name[i] 
+  state <- unique_elections$State_Name[i] 
+  election_type <- unique_elections$Election_Type[i] 
+  
+  state_election_combo <- paste(state, election_type, sep = " - ")
+  
+  if (state_election_combo != current_state_election) { 
+    if (current_state_election != "") { 
+      state_counter <- state_counter + 1 
+      cat("\nCompleted:", current_state_election, "-", state_counter, "of", total_state_elections,  
+          "state-election type combinations (", round(state_counter/total_state_elections*100, 1), "%)\n") 
+      states_completed <- c(states_completed, current_state_election) 
+    } 
+    current_state_election <- state_election_combo 
+    cat("\nStarting new:", current_state_election, "\n") 
+  }
   
   # filter data for current group
-  group_data <- all_states_GE_1 %>%
+  group_data <- all_states_elections_1 %>%
     filter(Year == year, 
            Constituency_Name == constituency, 
            State_Name == state, 
@@ -490,9 +946,9 @@ for (i in 1:nrow(unique_elections)) {
           )
           
           # update the original dataframe markers (same as original code)
-          all_states_GE_1$is_decoy[all_states_GE_1$pid == minor_candidate_pid] <- TRUE
-          all_states_GE_1$decoy_for_pid[all_states_GE_1$pid == minor_candidate_pid] <- main_candidate_pid
-          all_states_GE_1$decoy_for_name[all_states_GE_1$pid == minor_candidate_pid] <- main_candidates$Candidate_clean[main_idx]
+          all_states_elections_1$is_decoy[all_states_elections_1$pid == minor_candidate_pid] <- TRUE
+          all_states_elections_1$decoy_for_pid[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_pid
+          all_states_elections_1$decoy_for_name[all_states_elections_1$pid == minor_candidate_pid] <- main_candidates$Candidate_clean[main_idx]
         }
       }
     }
@@ -575,213 +1031,16 @@ fp_summary <- data.frame(
 
 fp_summary$False_Positive_Rate <- fp_summary$False_Positives / fp_summary$Total_Pairs * 100
 
-### Some more plots
-state_metrics <- state_metrics %>%
-  arrange(desc(mean_decoy_share)) %>%
-  mutate(State_Name = factor(State_Name, levels = State_Name))
-
-state_metrics_AE <- state_metrics_AE %>%
-  arrange(desc(mean_decoy_share)) %>%
-  mutate(State_Name = factor(State_Name, levels = State_Name))
-
-state_metrics_GE <- state_metrics_GE %>%
-  arrange(desc(mean_decoy_share)) %>%
-  mutate(State_Name = factor(State_Name, levels = State_Name))
-
-ggplot(state_metrics, aes(x = State_Name, y = mean_decoy_share)) +
-  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
-  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
-  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
-  labs(
-    title = "Average Share of Decoy Candidates per Election by State",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Proportion of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-ggplot(state_metrics_AE, aes(x = State_Name, y = mean_decoy_share)) +
-  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
-  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
-  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
-  labs(
-    title = "Average Share of Decoy Candidates per Election by State (AE)",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Proportion of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-ggplot(state_metrics_GE, aes(x = State_Name, y = mean_decoy_share)) +
-  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
-  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
-  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
-  labs(
-    title = "Average Share of Decoy Candidates per Election by State (GE)",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Proportion of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-ggplot(state_metrics, aes(x = State_Name, y = mean_num_decoys)) +
-  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
-  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
-  labs(
-    title = "Average Number of Decoy Candidates per Election by State",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Number of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-ggplot(state_metrics_AE, aes(x = State_Name, y = mean_num_decoys)) +
-  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
-  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
-  labs(
-    title = "Average Number of Decoy Candidates per Election by State",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Number of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-ggplot(state_metrics_GE, aes(x = State_Name, y = mean_num_decoys)) +
-  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
-  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
-  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
-  labs(
-    title = "Average Number of Decoy Candidates per Election by State (GE)",
-    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
-    y = "Number of Decoy Candidates"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-state_metrics_long <- state_metrics %>%
-  dplyr::select(State_Name, 
-                `Average Number` = mean_num_decoys, 
-                `Maximum Number` = max_num_decoys,
-                `Average Share` = mean_decoy_share, 
-                `Maximum Share` = max_decoy_share,
-                constituency_count) %>%
-  pivot_longer(cols = c(`Average Number`, `Maximum Number`, `Average Share`, `Maximum Share`),
-               names_to = "Metric", values_to = "Value")
-
-# faceted
-ggplot(state_metrics_long, aes(x = State_Name, y = Value, fill = Metric)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
-  facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
-  # geom_text(aes(label = round(Value, 3)), position = position_dodge(width = 0.9), 
-  #           vjust = -0.5, size = 2.5) +
-  scale_fill_brewer(palette = "Set1") +
-  labs(
-    title = "Decoy Candidates Metrics by State",
-    subtitle = "States ordered by average share of decoy candidates",
-    x = "State",
-    y = "Value"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
-    strip.background = element_rect(fill = "lightgray", color = NA),
-    strip.text = element_text(face = "bold"),
-    legend.position = "none",
-    panel.spacing = unit(1, "lines"),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-state_year_metrics <- constituency_metrics %>%
-  group_by(State_Name, Year) %>%
-  summarise(
-    decoy_proportion = mean(decoy_candidates/total_candidates, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-ggplot(state_year_metrics, aes(x = Year, y = decoy_proportion, color = State_Name, group = State_Name)) +
-  geom_line() +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = "Avg Decoy Proportion by State Over Time",
-    x = "Election Year",
-    y = "Average Decoy Proportion",
-    color = "State"
-  ) +
-  theme(
-    legend.position = "right",
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.title = element_text(face = "bold")
-  )
-
-year_metrics <- state_year_metrics %>%
-  group_by(Year) %>%
-  dplyr::summarize(
-    decoy_proportion = mean(decoy_proportion, na.rm = TRUE), 
-    .groups = "drop"
-  )
-
-ggplot(year_metrics, aes(x = Year, y = decoy_proportion)) +
-  geom_line(color = "red") +
-  geom_point(color = "darkred") +
-  theme_minimal() +
-  labs(
-    title = "Avg Decoy Proportion Over Time (EW)",
-    x = "Election Year",
-    y = "Average Decoy Proportion"
-  ) +
-  theme(
-    legend.position = "right",
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.title = element_text(face = "bold")
-  )
-
-### Make graphs on how well these candidates did
-
-
 ### More complicated approach - following the STATA code more closely - MORE COMPUTATIONALLY INTENSIVE
+### Should include because then, it would be easier to tune the thresholds and not take time. 
+
+### Saving
+write.csv(all_states_elections_1, "Cleaned Data/all_states_election_decoy")
+write.csv(constituency_metrics, "Cleaned Data/constituency_year_state_decoy")
+write.csv(state_metrics, "Cleaned Data/state_decoy")
+write.csv(year_metrics, "Cleaned Data/year_decoy")
+
+
 
 ### Margin Notes
 # here is how u calc levenshtein
@@ -852,3 +1111,5 @@ sum(constituency_metrics$decoy_candidates >= 3)
 # Do this for state assembly
 # Look at how decoys have evolved
 # how do we deal with situations like punjab
+  # can potentially add less weight to last names
+  
