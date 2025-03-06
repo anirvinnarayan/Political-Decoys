@@ -8,6 +8,13 @@
 # which is very computationally intensive. so, i just calculated what i needed to and the scores of the decoys. 
 # and the "mains" with which they corresponded. 
 
+### PROBLEMS TO SOLVE: 
+  # sometimes major candidate is also being marked. 
+    # this is happening because same candidate can stand in 2 elections, be major in 1 and be minor in another. 
+    # so cannot use unique candidate ID - obv. 
+  # Bihar (maybe others) have 2 AEs in same year. So, group additionally by Assembly No. 
+
+
 rm(list = ls())
 setwd("/Users/anirvin/Downloads/Political Decoys Data")
 if (!require("pacman")) install.packages("pacman")
@@ -157,20 +164,28 @@ normalized_levenshtein_matrix <- function(strings) {
   return(normalized)
 }
 
-# init decoy vars
-all_states_elections$is_decoy <- FALSE
-
 # pre-processing the name string (more could be done here) 
 # right now just strip spaces and punctuation
 all_states_elections$Candidate_clean <- gsub(pattern = "[[:space:][:punct:]]", replacement = "", all_states_elections$Candidate)
 
 # for first try - note pre-processing and threshold of 0.53
 all_states_elections_1 <- all_states_elections
+all_states_elections_1$is_decoy <- FALSE
+all_states_elections_1$decoy_for_pid <- NA_character_
+all_states_elections_1$decoy_for_name <- NA_character_
 
 # list to process the data
 result_list <- list()
 
 str(all_states_elections_1)
+
+### FIRST TEST
+tn <- all_states_elections_1 %>%
+  filter(State_Name == "Tamil_Nadu")
+
+unique_elections <- tn %>%
+  dplyr::select(Year, State_Name, Constituency_Name, Election_Type, Assembly_No) %>%
+  distinct()
 
 # progress
 current_state <- ""
@@ -183,11 +198,139 @@ for (i in 1:nrow(unique_elections)) {
   constituency <- unique_elections$Constituency_Name[i]
   state <- unique_elections$State_Name[i]
   election_type <- unique_elections$Election_Type[i]
+  assembly_no <- unique_elections$Assembly_No[i]
+
+  if (state != current_state) {
+    if (current_state != "") {
+      state_counter <- state_counter + 1
+      cat("\nCompleted state:", current_state, "-", state_counter, "of", total_states,
+          "states (", round(state_counter/total_states*100, 1), "%)\n")
+      states_completed <- c(states_completed, current_state)
+    }
+    current_state <- state
+    cat("\nStarting new state:", current_state, "\n")
+  }
+
+  # filter data for current group
+  group_data <- tn %>%
+    filter(Year == year,
+           Constituency_Name == constituency,
+           State_Name == state,
+           Election_Type == election_type,
+           Assembly_No == assembly_no)
+
+  # mark main and minor candidates
+  group_data <- group_data %>%
+    mutate(candidate_type = ifelse(Vote_Share_Percentage > 10, "main", "minor"))
+
+  # get main and minor candidates
+  main_candidates <- group_data %>% filter(candidate_type == "main")
+  minor_candidates <- group_data %>% filter(candidate_type == "minor")
+
+  # skip if no main or no minor candidates
+  if (nrow(main_candidates) == 0 || nrow(minor_candidates) == 0) {
+    next
+  }
+
+  # extract all candidate names and their corresponding pids
+  candidate_names <- group_data$Candidate_clean
+  candidate_pids <- group_data$pid
+
+  # calculate the normalized Levenshtein matrix for names - access by index
+  distance_matrix <- normalized_levenshtein_matrix(candidate_names)
+
+  # check for decoys by comparing each main candidate with each minor candidate
+  for (main_idx in 1:nrow(main_candidates)) {
+    main_candidate_name <- main_candidates$Candidate_clean[main_idx]
+    main_candidate_pid <- main_candidates$pid[main_idx]
+    main_matrix_idx <- which(group_data$pid == main_candidate_pid)
+
+    for (minor_idx in 1:nrow(minor_candidates)) {
+      minor_candidate_name <- minor_candidates$Candidate_clean[minor_idx]
+      minor_candidate_pid <- minor_candidates$pid[minor_idx]
+
+      # Skip if comparing the same candidate ID
+      if (minor_candidate_pid == main_candidate_pid) {
+        next
+      }
+
+      minor_matrix_idx <- which(group_data$pid == minor_candidate_pid)
+
+      # get the normalized levenshtein similarity using matrix indices
+      if (length(main_matrix_idx) == 1 && length(minor_matrix_idx) == 1) {
+        lev_similarity <- distance_matrix[main_matrix_idx, minor_matrix_idx]
+
+        # check if this is a potential decoy based on similarity threshold
+        if (lev_similarity > 0.53) {
+          # CRITICAL CHANGE: Only update rows for this specific election context
+          decoy_rows <- which(tn$pid == minor_candidate_pid &
+                                tn$Year == year &
+                                tn$Constituency_Name == constituency &
+                                tn$State_Name == state &
+                                tn$Election_Type == election_type &
+                                tn$Assembly_No == assembly_no)
+
+          # mark as decoy in the original dataframe only for this specific election
+          if (length(decoy_rows) > 0) {
+            tn$is_decoy[decoy_rows] <- TRUE
+            tn$decoy_for_pid[decoy_rows] <- main_candidate_pid
+            tn$decoy_for_name[decoy_rows] <- main_candidate_name
+          }
+
+          # add to results list for review
+          result_list[[length(result_list) + 1]] <- data.frame(
+            Year = year,
+            Constituency_Name = constituency,
+            State_Name = state,
+            Election_Type = election_type,
+            Assembly_No = assembly_no,
+            Main_Candidate_name = main_candidate_name,
+            Main_Candidate_pid = main_candidate_pid,
+            Main_Party = main_candidates$Party[main_idx],
+            Main_Votes = main_candidates$Votes[main_idx],
+            Main_Vote_Share = main_candidates$Vote_Share_Percentage[main_idx],
+            Minor_Candidate_name = minor_candidate_name,
+            Minor_Candidate_pid = minor_candidate_pid,
+            Minor_Party = minor_candidates$Party[minor_idx],
+            Minor_Votes = minor_candidates$Votes[minor_idx],
+            Minor_Vote_Share = minor_candidates$Vote_Share_Percentage[minor_idx],
+            Levenshtein_Similarity = lev_similarity
+          )
+        }
+      }
+    }
+  }
+}
+
+test2 <- tn %>%
+  filter(Year == 1971 & State_Name == "Tamil_Nadu" & Constituency_Name == "PALANI" & Election_Type == "State Assembly Election (AE)")
+# FUCK YES.
+
+### Now, for the rest
+unique_elections <- all_states_elections %>%
+  dplyr::select(Year, State_Name, Constituency_Name, Election_Type, Assembly_No) %>%
+  distinct()
+
+# empty the list post test
+result_list <- list()
+
+# progress
+current_state <- ""
+states_completed <- c()
+total_states <- length(unique(unique_elections$State_Name))
+state_counter <- 0
+
+for (i in 1:nrow(unique_elections)) {
+  year <- unique_elections$Year[i]
+  constituency <- unique_elections$Constituency_Name[i]
+  state <- unique_elections$State_Name[i]
+  election_type <- unique_elections$Election_Type[i]
+  assembly_no <- unique_elections$Assembly_No[i]
   
   if (state != current_state) {
     if (current_state != "") {
       state_counter <- state_counter + 1
-      cat("\nCompleted state:", current_state, "-", state_counter, "of", total_states, 
+      cat("\nCompleted state:", current_state, "-", state_counter, "of", total_states,
           "states (", round(state_counter/total_states*100, 1), "%)\n")
       states_completed <- c(states_completed, current_state)
     }
@@ -197,10 +340,11 @@ for (i in 1:nrow(unique_elections)) {
   
   # filter data for current group
   group_data <- all_states_elections_1 %>%
-    filter(Year == year, 
-           Constituency_Name == constituency, 
-           State_Name == state, 
-           Election_Type == election_type)
+    filter(Year == year,
+           Constituency_Name == constituency,
+           State_Name == state,
+           Election_Type == election_type, 
+           Assembly_No == assembly_no)
   
   # mark main and minor candidates
   group_data <- group_data %>%
@@ -231,6 +375,12 @@ for (i in 1:nrow(unique_elections)) {
     for (minor_idx in 1:nrow(minor_candidates)) {
       minor_candidate_name <- minor_candidates$Candidate_clean[minor_idx]
       minor_candidate_pid <- minor_candidates$pid[minor_idx]
+      
+      # Skip if comparing the same candidate ID
+      if (minor_candidate_pid == main_candidate_pid) {
+        next
+      }
+      
       minor_matrix_idx <- which(group_data$pid == minor_candidate_pid)
       
       # get the normalized levenshtein similarity using matrix indices
@@ -239,10 +389,20 @@ for (i in 1:nrow(unique_elections)) {
         
         # check if this is a potential decoy based on similarity threshold
         if (lev_similarity > 0.53) {
-          # mark as decoy in the original dataframe using pid as ID
-          all_states_elections_1$is_decoy[all_states_elections_1$pid == minor_candidate_pid] <- TRUE
-          all_states_elections_1$decoy_for_pid[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_pid
-          all_states_elections_1$decoy_for_name[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_name
+          # CRITICAL CHANGE: Only update rows for this specific election context
+          decoy_rows <- which(all_states_elections_1$pid == minor_candidate_pid & 
+                                all_states_elections_1$Year == year &
+                                all_states_elections_1$Constituency_Name == constituency &
+                                all_states_elections_1$State_Name == state &
+                                all_states_elections_1$Election_Type == election_type &
+                                all_states_elections_1$Assembly_No == assembly_no)
+          
+          # mark as decoy in the original dataframe only for this specific election
+          if (length(decoy_rows) > 0) {
+            all_states_elections_1$is_decoy[decoy_rows] <- TRUE
+            all_states_elections_1$decoy_for_pid[decoy_rows] <- main_candidate_pid
+            all_states_elections_1$decoy_for_name[decoy_rows] <- main_candidate_name
+          }
           
           # add to results list for review
           result_list[[length(result_list) + 1]] <- data.frame(
@@ -250,6 +410,7 @@ for (i in 1:nrow(unique_elections)) {
             Constituency_Name = constituency,
             State_Name = state,
             Election_Type = election_type,
+            Assembly_No = assembly_no,
             Main_Candidate_name = main_candidate_name,
             Main_Candidate_pid = main_candidate_pid,
             Main_Party = main_candidates$Party[main_idx],
@@ -643,6 +804,16 @@ ggplot(state_metrics_long, aes(x = State_Name, y = Value, fill = Metric)) +
     plot.subtitle = element_text(size = 9)
   )
 
+ggsave(
+  filename = "Plots/Decoy_metrics_state.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
 state_year_metrics <- constituency_metrics %>%
   group_by(State_Name, Year) %>%
   summarise(
@@ -682,6 +853,7 @@ ggplot(year_metrics, aes(x = Year, y = decoy_proportion)) +
     x = "Election Year",
     y = "Average Decoy Proportion"
   ) +
+  scale_y_continuous(labels = scales::percent) +
   theme(
     legend.position = "right",
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -809,30 +981,30 @@ constituency_year_counts <- data.frame(
   minor_minor_fps = numeric()
 )
 
-for (i in 1:nrow(unique_elections)) { 
-  year <- unique_elections$Year[i] 
-  constituency <- unique_elections$Constituency_Name[i] 
-  state <- unique_elections$State_Name[i] 
-  election_type <- unique_elections$Election_Type[i] 
+for (i in 1:nrow(unique_elections)) {
+  year <- unique_elections$Year[i]
+  constituency <- unique_elections$Constituency_Name[i]
+  state <- unique_elections$State_Name[i]
+  election_type <- unique_elections$Election_Type[i]
   
   state_election_combo <- paste(state, election_type, sep = " - ")
   
-  if (state_election_combo != current_state_election) { 
-    if (current_state_election != "") { 
-      state_counter <- state_counter + 1 
-      cat("\nCompleted:", current_state_election, "-", state_counter, "of", total_state_elections,  
-          "state-election type combinations (", round(state_counter/total_state_elections*100, 1), "%)\n") 
-      states_completed <- c(states_completed, current_state_election) 
-    } 
-    current_state_election <- state_election_combo 
-    cat("\nStarting new:", current_state_election, "\n") 
+  if (state_election_combo != current_state_election) {
+    if (current_state_election != "") {
+      state_counter <- state_counter + 1
+      cat("\nCompleted:", current_state_election, "-", state_counter, "of", total_state_elections,
+          "state-election type combinations (", round(state_counter/total_state_elections*100, 1), "%)\n")
+      states_completed <- c(states_completed, current_state_election)
+    }
+    current_state_election <- state_election_combo
+    cat("\nStarting new:", current_state_election, "\n")
   }
   
   # filter data for current group
   group_data <- all_states_elections_1 %>%
-    filter(Year == year, 
-           Constituency_Name == constituency, 
-           State_Name == state, 
+    filter(Year == year,
+           Constituency_Name == constituency,
+           State_Name == state,
            Election_Type == election_type)
   
   # mark main and minor candidates
@@ -915,6 +1087,11 @@ for (i in 1:nrow(unique_elections)) {
       main_candidate_pid <- main_candidates$pid[main_idx]
       minor_candidate_pid <- minor_candidates$pid[minor_idx]
       
+      # Skip if comparing the same candidate ID
+      if (minor_candidate_pid == main_candidate_pid) {
+        next
+      }
+      
       main_matrix_idx <- which(group_data$pid == main_candidate_pid)
       minor_matrix_idx <- which(group_data$pid == minor_candidate_pid)
       
@@ -944,11 +1121,7 @@ for (i in 1:nrow(unique_elections)) {
             Candidate2_Vote_Share = minor_candidates$Vote_Share_Percentage[minor_idx],
             Levenshtein_Similarity = lev_similarity
           )
-          
-          # update the original dataframe markers (same as original code)
-          all_states_elections_1$is_decoy[all_states_elections_1$pid == minor_candidate_pid] <- TRUE
-          all_states_elections_1$decoy_for_pid[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_pid
-          all_states_elections_1$decoy_for_name[all_states_elections_1$pid == minor_candidate_pid] <- main_candidates$Candidate_clean[main_idx]
+          }
         }
       }
     }
@@ -1011,7 +1184,7 @@ for (i in 1:nrow(unique_elections)) {
     minor_minor_total = minor_minor_total,
     minor_minor_fps = minor_minor_fps
   ))
-}
+
 
 placebo_results_df <- do.call(rbind, placebo_results)
 
@@ -1040,7 +1213,78 @@ write.csv(constituency_metrics, "Cleaned Data/constituency_year_state_decoy")
 write.csv(state_metrics, "Cleaned Data/state_decoy")
 write.csv(year_metrics, "Cleaned Data/year_decoy")
 
+### SANITY CHECKING WEIRD SHIT
+test1 <- all_states_elections_1 %>%
+  filter(Year == 2005 & State_Name == "Bihar" & Constituency_Name == "CHENARI" & Election_Type == "State Assembly Election (AE)")
 
+test2 <- all_states_elections_1 %>%
+  filter(Year == 1971 & State_Name == "Tamil_Nadu" & Constituency_Name == "PALANI" & Election_Type == "State Assembly Election (AE)")
+
+test1 <- test1 %>%
+  mutate(candidate_type = ifelse(Vote_Share_Percentage > 10, "main", "minor"))
+
+main_candidates <- test1 %>% filter(candidate_type == "main")
+minor_candidates <- test1 %>% filter(candidate_type == "minor")
+
+if (nrow(main_candidates) > 0 && nrow(minor_candidates) > 0) {
+  candidate_names <- test1$Candidate_clean
+  candidate_pids <- test1$pid
+  
+  distance_matrix <- normalized_levenshtein_matrix(candidate_names)
+  
+  if (!exists("result_list")) {
+    result_list <- list()
+  }
+  
+  for (main_idx in 1:nrow(main_candidates)) {
+    main_candidate_name <- main_candidates$Candidate_clean[main_idx]
+    main_candidate_pid <- main_candidates$pid[main_idx]
+    main_matrix_idx <- which(test1$pid == main_candidate_pid)
+    
+    for (minor_idx in 1:nrow(minor_candidates)) {
+      minor_candidate_name <- minor_candidates$Candidate_clean[minor_idx]
+      minor_candidate_pid <- minor_candidates$pid[minor_idx]
+      minor_matrix_idx <- which(test1$pid == minor_candidate_pid)
+      
+      if (length(main_matrix_idx) == 1 && length(minor_matrix_idx) == 1) {
+        lev_similarity <- distance_matrix[main_matrix_idx, minor_matrix_idx]
+        
+        # check if this is a potential decoy based on similarity threshold
+        if (lev_similarity > 0.53) {
+          # mark as decoy in the original dataframe using pid as ID
+          all_states_elections_1$is_decoy[all_states_elections_1$pid == minor_candidate_pid] <- TRUE
+          all_states_elections_1$decoy_for_pid[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_pid
+          all_states_elections_1$decoy_for_name[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_name
+          
+          # add to results list for review
+          result_list[[length(result_list) + 1]] <- data.frame(
+            Year = year,
+            Constituency_Name = constituency,
+            State_Name = state,
+            Election_Type = election_type,
+            Main_Candidate_name = main_candidate_name,
+            Main_Candidate_pid = main_candidate_pid,
+            Main_Party = main_candidates$Party[main_idx],
+            Main_Votes = main_candidates$Votes[main_idx],
+            Main_Vote_Share = main_candidates$Vote_Share_Percentage[main_idx],
+            Minor_Candidate_name = minor_candidate_name,
+            Minor_Candidate_pid = minor_candidate_pid,
+            Minor_Party = minor_candidates$Party[minor_idx],
+            Minor_Votes = minor_candidates$Votes[minor_idx],
+            Minor_Vote_Share = minor_candidates$Vote_Share_Percentage[minor_idx],
+            Levenshtein_Similarity = lev_similarity
+          )
+        }
+      }
+    }
+  }
+  
+  # print summary of results
+  cat("Processing complete for", constituency, "in", state, "\n")
+  cat("Found", length(result_list), "potential decoy candidates\n")
+} else {
+  cat("No main or minor candidates found for this constituency\n")
+}
 
 ### Margin Notes
 # here is how u calc levenshtein
