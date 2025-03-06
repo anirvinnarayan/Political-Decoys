@@ -1,5 +1,5 @@
 # ============================================
-# Political Decoys - Levenshtein Recreation
+# Political Decoys - Decoys for GE and AE
 # ============================================
 # Date: 06/03/25
 # Author: Anirvin Narayan
@@ -49,18 +49,27 @@ pacman::p_load(
 
 ### Loading
 all_states_GE <- read.csv("Raw Data/All_States_GE.csv")
+all_states_AE <- read.csv("Raw Data/TCPD_AE_All_States_2025-3-6.csv")
 
-duplicates_pid <- all_states_GE$pid[duplicated(all_states_GE$pid)]
-duplicates_pid_numeric <- as.numeric(duplicates_pid)
-sum_duplicates <- sum(duplicates_pid_numeric, na.rm = TRUE)
-
-### Understanding the Data
+str(all_states_AE)
 str(all_states_GE)
 
-how_many_main_min <- all_states_GE %>%
-  group_by(Year, Constituency_Name, State_Name) %>%
-  summarise(main_cand = sum(Vote_Share_Percentage > 10, na.rm = TRUE), 
-            minor_cand = sum(Vote_Share_Percentage < 10, na.rm = TRUE)) %>%
+# how to merge
+setdiff(names(all_states_AE), names(all_states_GE))
+all_states_GE$Age <- NA
+all_states_GE$District_Name <- NA
+
+all_states_elections <- rbind(all_states_AE, all_states_GE)
+
+### Understanding the Data
+str(all_states_elections)
+
+how_many_main_min <- all_states_elections %>%
+  group_by(Year, Constituency_Name, State_Name, Election_Type) %>%
+  summarise(
+    main_cand = sum(replace_na(Vote_Share_Percentage, 0) > 10), 
+    minor_cand = sum(replace_na(Vote_Share_Percentage, 0) <= 10)
+  ) %>%
   ungroup()
 
 main_min_year <- how_many_main_min %>%
@@ -75,7 +84,12 @@ ggplot(main_min_year, aes(x = Year)) +
        x = "Year",
        y = "Average Number of Candidates",
        color = "Candidate Type") +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
 
 main_min_state <- how_many_main_min %>%
   group_by(State_Name) %>%
@@ -92,14 +106,16 @@ ggplot(main_min_state_long, aes(x = State_Name, y = avg_candidates, fill = Candi
        y = "Average Number of Candidates",
        fill = "Candidate Type") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(size = 9)
+  )
 
-unique_elections <- all_states_GE %>%
-  dplyr::select(Year, State_Name, Constituency_Name) %>%
+unique_elections <- all_states_elections %>%
+  dplyr::select(Year, State_Name, Constituency_Name, Election_Type) %>%
   distinct()
 
-### Calculate Similarity Scores
-# define fn for levenshtein calculation
 normalized_levenshtein_matrix <- function(strings) {
   # get raw distance matrix
   raw_dist <- stringdistmatrix(strings, strings, method = "lv")
@@ -122,31 +138,49 @@ normalized_levenshtein_matrix <- function(strings) {
 }
 
 # init decoy vars
-all_states_GE$is_decoy <- FALSE
+all_states_elections$is_decoy <- FALSE
 
 # pre-processing the name string (more could be done here) 
 # right now just strip spaces and punctuation
-all_states_GE$Candidate_clean <- gsub(pattern = "[[:space:][:punct:]]", replacement = "", all_states_GE$Candidate)
+all_states_elections$Candidate_clean <- gsub(pattern = "[[:space:][:punct:]]", replacement = "", all_states_elections$Candidate)
 
 # for first try - note pre-processing and threshold of 0.53
-all_states_GE_1 <- all_states_GE
+all_states_elections_1 <- all_states_elections
 
 # list to process the data
 result_list <- list()
 
-str(all_states_GE_1)
+str(all_states_elections_1)
 
-# process for each election
+# progress
+current_state <- ""
+states_completed <- c()
+total_states <- length(unique(unique_elections$State_Name))
+state_counter <- 0
+
 for (i in 1:nrow(unique_elections)) {
   year <- unique_elections$Year[i]
   constituency <- unique_elections$Constituency_Name[i]
   state <- unique_elections$State_Name[i]
+  election_type <- unique_elections$Election_Type[i]
+  
+  if (state != current_state) {
+    if (current_state != "") {
+      state_counter <- state_counter + 1
+      cat("\nCompleted state:", current_state, "-", state_counter, "of", total_states, 
+          "states (", round(state_counter/total_states*100, 1), "%)\n")
+      states_completed <- c(states_completed, current_state)
+    }
+    current_state <- state
+    cat("\nStarting new state:", current_state, "\n")
+  }
   
   # filter data for current group
-  group_data <- all_states_GE_1 %>%
+  group_data <- all_states_elections_1 %>%
     filter(Year == year, 
            Constituency_Name == constituency, 
-           State_Name == state)
+           State_Name == state, 
+           Election_Type == election_type)
   
   # mark main and minor candidates
   group_data <- group_data %>%
@@ -186,15 +220,16 @@ for (i in 1:nrow(unique_elections)) {
         # check if this is a potential decoy based on similarity threshold
         if (lev_similarity > 0.53) {
           # mark as decoy in the original dataframe using pid as ID
-          all_states_GE_1$is_decoy[all_states_GE_1$pid == minor_candidate_pid] <- TRUE
-          all_states_GE_1$decoy_for_pid[all_states_GE_1$pid == minor_candidate_pid] <- main_candidate_pid
-          all_states_GE_1$decoy_for_name[all_states_GE_1$pid == minor_candidate_pid] <- main_candidate_name
+          all_states_elections_1$is_decoy[all_states_elections_1$pid == minor_candidate_pid] <- TRUE
+          all_states_elections_1$decoy_for_pid[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_pid
+          all_states_elections_1$decoy_for_name[all_states_elections_1$pid == minor_candidate_pid] <- main_candidate_name
           
           # add to results list for review
           result_list[[length(result_list) + 1]] <- data.frame(
             Year = year,
             Constituency_Name = constituency,
             State_Name = state,
+            Election_Type = election_type,
             Main_Candidate_name = main_candidate_name,
             Main_Candidate_pid = main_candidate_pid,
             Main_Party = main_candidates$Party[main_idx],
@@ -222,8 +257,8 @@ if (length(result_list) > 0) {
 }
 
 ### Collapse by constituency-state-year
-constituency_metrics <- all_states_GE_1 %>%
-  group_by(State_Name, Year, Constituency_Name) %>%
+constituency_metrics <- all_states_elections_1 %>%
+  group_by(State_Name, Year, Constituency_Name, Election_Type) %>%
   dplyr::summarize(
     total_candidates = n_distinct(pid),
     decoy_candidates = sum(is_decoy, na.rm = TRUE),
@@ -246,7 +281,13 @@ constituency_metrics <- all_states_GE_1 %>%
     decoy_impact_potential = ifelse(decoy_vote_share > winning_margin_percentage, TRUE, FALSE)
   ) %>%
   # sort by state, year and constituency
-  arrange(State_Name, Year, Constituency_Name)
+  arrange(State_Name, Year, Constituency_Name, Election_Type)
+
+constituency_metrics_AE <- constituency_metrics %>%
+  filter(constituency_metrics$Election_Type == "State Assembly Election (AE)")
+
+constituency_metrics_GE <- constituency_metrics %>%
+  filter(constituency_metrics$Election_Type == "Lok Sabha Election (GE)")
 
 state_metrics <- constituency_metrics %>%
   group_by(State_Name) %>%
@@ -266,11 +307,47 @@ state_metrics <- constituency_metrics %>%
     # how many constituencies
     constituency_count = n(),
     .groups = "drop"
-  ) %>%
-  # format w 4 decimal points
-  mutate(across(c(starts_with("mean_"), starts_with("median_"), 
-                  starts_with("p90_"), starts_with("max_")), 
-                ~round(., 4)))
+  )
+
+state_metrics_AE <- constituency_metrics_AE %>%
+  group_by(State_Name) %>%
+  dplyr::summarize(
+    # number of decoys
+    mean_num_decoys = mean(decoy_candidates, na.rm = TRUE),
+    median_num_decoys = median(decoy_candidates, na.rm = TRUE),
+    p90_num_decoys = quantile(decoy_candidates, 0.9, na.rm = TRUE),
+    max_num_decoys = max(decoy_candidates, na.rm = TRUE),
+    
+    # share of decoys
+    mean_decoy_share = mean(decoy_share, na.rm = TRUE),
+    median_decoy_share = median(decoy_share, na.rm = TRUE),
+    p90_decoy_share = quantile(decoy_share, 0.9, na.rm = TRUE),
+    max_decoy_share = max(decoy_share, na.rm = TRUE),
+    
+    # how many constituencies
+    constituency_count = n(),
+    .groups = "drop"
+  )
+
+state_metrics_GE <- constituency_metrics_GE %>%
+  group_by(State_Name) %>%
+  dplyr::summarize(
+    # number of decoys
+    mean_num_decoys = mean(decoy_candidates, na.rm = TRUE),
+    median_num_decoys = median(decoy_candidates, na.rm = TRUE),
+    p90_num_decoys = quantile(decoy_candidates, 0.9, na.rm = TRUE),
+    max_num_decoys = max(decoy_candidates, na.rm = TRUE),
+    
+    # share of decoys
+    mean_decoy_share = mean(decoy_share, na.rm = TRUE),
+    median_decoy_share = median(decoy_share, na.rm = TRUE),
+    p90_decoy_share = quantile(decoy_share, 0.9, na.rm = TRUE),
+    max_decoy_share = max(decoy_share, na.rm = TRUE),
+    
+    # how many constituencies
+    constituency_count = n(),
+    .groups = "drop"
+  )
 
 ### Placebo Test - to see whether similarity is distributed differently across major and minor cands
 # placebo for all_states_GE_1
@@ -280,6 +357,7 @@ constituency_year_counts <- data.frame(
   Year = numeric(),
   Constituency_Name = character(),
   State_Name = character(),
+  Election_Type = character(),
   main_main_total = numeric(),
   main_main_fps = numeric(),
   main_minor_total = numeric(), 
@@ -292,12 +370,14 @@ for (i in 1:nrow(unique_elections)) {
   year <- unique_elections$Year[i]
   constituency <- unique_elections$Constituency_Name[i]
   state <- unique_elections$State_Name[i]
+  election_type <- unique_elections$Election_Type[i]
   
   # filter data for current group
   group_data <- all_states_GE_1 %>%
     filter(Year == year, 
            Constituency_Name == constituency, 
-           State_Name == state)
+           State_Name == state, 
+           Election_Type == election_type)
   
   # mark main and minor candidates
   group_data <- group_data %>%
@@ -351,6 +431,7 @@ for (i in 1:nrow(unique_elections)) {
               Year = year,
               Constituency_Name = constituency,
               State_Name = state,
+              Election_Type = election_type,
               Pair_Type = "main-main",
               Candidate1_name = main_candidates$Candidate_clean[idx1],
               Candidate1_pid = candidate1_pid,
@@ -393,6 +474,7 @@ for (i in 1:nrow(unique_elections)) {
             Year = year,
             Constituency_Name = constituency,
             State_Name = state,
+            Election_Type = election_type,
             Pair_Type = "main-minor",
             Candidate1_name = main_candidates$Candidate_clean[main_idx],
             Candidate1_pid = main_candidate_pid,
@@ -440,6 +522,7 @@ for (i in 1:nrow(unique_elections)) {
               Year = year,
               Constituency_Name = constituency,
               State_Name = state,
+              Election_Type = election_type,
               Pair_Type = "minor-minor",
               Candidate1_name = minor_candidates$Candidate_clean[idx1],
               Candidate1_pid = candidate1_pid,
@@ -464,6 +547,7 @@ for (i in 1:nrow(unique_elections)) {
     Year = year,
     Constituency_Name = constituency,
     State_Name = state,
+    Election_Type = election_type,
     main_main_total = main_main_total,
     main_main_fps = main_main_fps,
     main_minor_total = main_minor_total,
@@ -496,17 +580,63 @@ state_metrics <- state_metrics %>%
   arrange(desc(mean_decoy_share)) %>%
   mutate(State_Name = factor(State_Name, levels = State_Name))
 
+state_metrics_AE <- state_metrics_AE %>%
+  arrange(desc(mean_decoy_share)) %>%
+  mutate(State_Name = factor(State_Name, levels = State_Name))
+
+state_metrics_GE <- state_metrics_GE %>%
+  arrange(desc(mean_decoy_share)) %>%
+  mutate(State_Name = factor(State_Name, levels = State_Name))
+
 ggplot(state_metrics, aes(x = State_Name, y = mean_decoy_share)) +
   geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
   geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
   geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
   labs(
-    title = "Average Share of Decoy Candidates by State",
+    title = "Average Share of Decoy Candidates per Election by State",
     subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
     x = "State",
     y = "Proportion of Decoy Candidates"
   ) +
-  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggplot(state_metrics_AE, aes(x = State_Name, y = mean_decoy_share)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
+  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
+  labs(
+    title = "Average Share of Decoy Candidates per Election by State (AE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Proportion of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggplot(state_metrics_GE, aes(x = State_Name, y = mean_decoy_share)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
+  geom_point(aes(y = max_decoy_share), color = "red", size = 2) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) + 
+  labs(
+    title = "Average Share of Decoy Candidates per Election by State (GE)",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Proportion of Decoy Candidates"
+  ) +
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -520,7 +650,43 @@ ggplot(state_metrics, aes(x = State_Name, y = mean_num_decoys)) +
   geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
   geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
   labs(
-    title = "Average Number of Decoy Candidates by State",
+    title = "Average Number of Decoy Candidates per Election by State",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Number of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggplot(state_metrics_AE, aes(x = State_Name, y = mean_num_decoys)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
+  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
+  labs(
+    title = "Average Number of Decoy Candidates per Election by State",
+    subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
+    x = "State",
+    y = "Number of Decoy Candidates"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 9)
+  )
+
+ggplot(state_metrics_GE, aes(x = State_Name, y = mean_num_decoys)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
+  geom_point(aes(y = max_num_decoys), color = "red", size = 2) +
+  labs(
+    title = "Average Number of Decoy Candidates per Election by State (GE)",
     subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
     x = "State",
     y = "Number of Decoy Candidates"
@@ -535,11 +701,11 @@ ggplot(state_metrics, aes(x = State_Name, y = mean_num_decoys)) +
 
 state_metrics_long <- state_metrics %>%
   dplyr::select(State_Name, 
-         `Average Number` = mean_num_decoys, 
-         `Maximum Number` = max_num_decoys,
-         `Average Share` = mean_decoy_share, 
-         `Maximum Share` = max_decoy_share,
-         constituency_count) %>%
+                `Average Number` = mean_num_decoys, 
+                `Maximum Number` = max_num_decoys,
+                `Average Share` = mean_decoy_share, 
+                `Maximum Share` = max_decoy_share,
+                constituency_count) %>%
   pivot_longer(cols = c(`Average Number`, `Maximum Number`, `Average Share`, `Maximum Share`),
                names_to = "Metric", values_to = "Value")
 
@@ -566,8 +732,6 @@ ggplot(state_metrics_long, aes(x = State_Name, y = Value, fill = Metric)) +
     plot.title = element_text(face = "bold"),
     plot.subtitle = element_text(size = 9)
   )
-
-constituency_metrics$tota
 
 state_year_metrics <- constituency_metrics %>%
   group_by(State_Name, Year) %>%
@@ -614,10 +778,10 @@ ggplot(year_metrics, aes(x = Year, y = decoy_proportion)) +
     axis.title = element_text(face = "bold")
   )
 
-### Make graphs on how well these candidates did. 
+### Make graphs on how well these candidates did
 
 
-### More complicated approach - following the STATA code more closely
+### More complicated approach - following the STATA code more closely - MORE COMPUTATIONALLY INTENSIVE
 
 ### Margin Notes
 # here is how u calc levenshtein
@@ -627,24 +791,24 @@ lv <- stringdistmatrix(words, words, method = "lv")
 normalized_levenshtein_matrix <- function(strings) {
   # get raw distance matrix
   raw_dist <- stringdistmatrix(strings, strings, method = "lv")
-
+  
   # create a matrix of maximum lengths
   n <- length(strings)
   len_matrix <- matrix(0, nrow = n, ncol = n)
   string_lengths <- nchar(strings)
-
+  
   for (i in 1:n) {
     for (j in 1:n) {
       len_matrix[i, j] <- max(string_lengths[i], string_lengths[j])
     }
   }
-
+  
   # normalize the distances
   normalized <- raw_dist / len_matrix
-
+  
   # set diagonal to 0
   diag(normalized) <- 0
-
+  
   rownames(normalized) <- strings
   colnames(normalized) <- strings
   return(normalized)
@@ -664,27 +828,27 @@ sum(constituency_metrics$decoy_candidates >= 3)
 # using All_States_GE as delimited
 # define list of all states (except bihar)
 # fn to identify decoys
-  # loops thru states
-  # create vars to store id, lv_dist, similarity, decoy, main_cand
-  # convert voteshare into numeric
-  # identify main cand (>10%)
-  # sort by const and id
-  # compares pair in constituency and election yr
-  # calculates similarity score
-  # identifies decoys
-  # save result for each state in separate file
-  # edits: save altogether
-  # make a flag to show (within const-year), main candidate, and corresponding decoy. have way to identify multiple mains and decoys of which mains. 
+# loops thru states
+# create vars to store id, lv_dist, similarity, decoy, main_cand
+# convert voteshare into numeric
+# identify main cand (>10%)
+# sort by const and id
+# compares pair in constituency and election yr
+# calculates similarity score
+# identifies decoys
+# save result for each state in separate file
+# edits: save altogether
+# make a flag to show (within const-year), main candidate, and corresponding decoy. have way to identify multiple mains and decoys of which mains. 
 # fn to collapse
-  # collapses by const-year (total cand and total decoys)
-  # shows decoy share
-  # 
+# collapses by const-year (total cand and total decoys)
+# shows decoy share
+# 
 
 # Notes
-  # count of decoys
-  # robustness to many ways to measuring decoys
-  # vote margin
-  # describe decoy characteristics
-  # Do this for state assembly
-  # Look at how decoys have evolved
-  # how do we deal with situations like punjab
+# count of decoys
+# robustness to many ways to measuring decoys
+# vote margin
+# describe decoy characteristics
+# Do this for state assembly
+# Look at how decoys have evolved
+# how do we deal with situations like punjab
