@@ -1190,6 +1190,7 @@ for (i in 1:nrow(unique_elections)) {
   constituency <- unique_elections$Constituency_Name[i]
   state <- unique_elections$State_Name[i]
   election_type <- unique_elections$Election_Type[i]
+  assembly_no <- unique_elections$Assembly_No[i]
   
   state_election_combo <- paste(state, election_type, sep = " - ")
   
@@ -1209,7 +1210,8 @@ for (i in 1:nrow(unique_elections)) {
     filter(Year == year,
            Constituency_Name == constituency,
            State_Name == state,
-           Election_Type == election_type)
+           Election_Type == election_type, 
+           Assembly_No == assembly_no)
   
   # mark main and minor candidates
   group_data <- group_data %>%
@@ -1264,6 +1266,7 @@ for (i in 1:nrow(unique_elections)) {
               Constituency_Name = constituency,
               State_Name = state,
               Election_Type = election_type,
+              Assembly_No == assembly_no,
               Pair_Type = "main-main",
               Candidate1_name = main_candidates$Candidate_clean[idx1],
               Candidate1_pid = candidate1_pid,
@@ -1312,6 +1315,7 @@ for (i in 1:nrow(unique_elections)) {
             Constituency_Name = constituency,
             State_Name = state,
             Election_Type = election_type,
+            Assembly_No == assembly_no,
             Pair_Type = "main-minor",
             Candidate1_name = main_candidates$Candidate_clean[main_idx],
             Candidate1_pid = main_candidate_pid,
@@ -1356,6 +1360,7 @@ for (i in 1:nrow(unique_elections)) {
               Constituency_Name = constituency,
               State_Name = state,
               Election_Type = election_type,
+              Assembly_No == assembly_no,
               Pair_Type = "minor-minor",
               Candidate1_name = minor_candidates$Candidate_clean[idx1],
               Candidate1_pid = candidate1_pid,
@@ -1380,6 +1385,7 @@ for (i in 1:nrow(unique_elections)) {
     Year = year,
     Constituency_Name = constituency,
     State_Name = state,
+    Assembly_No == assembly_no,
     Election_Type = election_type,
     main_main_total = main_main_total,
     main_main_fps = main_main_fps,
@@ -1408,14 +1414,11 @@ fp_summary <- data.frame(
 
 fp_summary$False_Positive_Rate <- fp_summary$False_Positives / fp_summary$Total_Pairs * 100
 
-### More complicated approach - following the STATA code more closely - MORE COMPUTATIONALLY INTENSIVE
-### Should include because then, it would be easier to tune the thresholds and not take time. 
-
 ### Saving
-write.csv(all_states_elections_1, "Cleaned Data/all_states_election_decoy")
-write.csv(constituency_metrics, "Cleaned Data/constituency_year_state_decoy")
-write.csv(state_metrics, "Cleaned Data/state_decoy")
-write.csv(year_metrics, "Cleaned Data/year_decoy")
+write.csv(all_states_elections_1, "Cleaned Data/all_states_election_decoy.csv")
+write.csv(constituency_metrics, "Cleaned Data/constituency_year_state_decoy.csv")
+write.csv(state_metrics, "Cleaned Data/state_decoy.csv")
+write.csv(year_metrics, "Cleaned Data/year_decoy.csv")
 
 ### SANITY CHECKING WEIRD SHIT
 test1 <- all_states_elections_1 %>%
