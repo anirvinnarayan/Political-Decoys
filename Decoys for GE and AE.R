@@ -437,6 +437,35 @@ if (length(result_list) > 0) {
   cat("No potential decoy candidates found.\n")
 }
 
+str(all_states_elections_1)
+unique(all_states_elections_1$MyNeta_education)
+unique(all_states_elections_1$Party_Type_TCPD)
+
+all_states_elections_1 <- all_states_elections_1 %>%
+  mutate(MyNeta_education_numeric = case_when(
+    MyNeta_education == "Illiterate" ~ 0,
+    MyNeta_education == "Literate" ~ 1,
+    MyNeta_education == "5th Pass" ~ 5,
+    MyNeta_education == "8th Pass" ~ 8,
+    MyNeta_education == "10th Pass" ~ 10,
+    MyNeta_education == "12th Pass" ~ 12,
+    MyNeta_education == "Graduate" ~ 16,
+    MyNeta_education == "Graduate Professional" ~ 16,
+    MyNeta_education == "Post Graduate" ~ 20,
+    MyNeta_education == "Doctorate" ~ 22,
+    MyNeta_education %in% c("Others", "Not Given Page Missing", "Not Given Not Filled", "") ~ NA_real_,
+    TRUE ~ NA_real_))
+
+all_states_elections_1 <- all_states_elections_1 %>%
+  mutate(Party_type_numeric = recode(Party_Type_TCPD,
+                                     "Independents" = 0,
+                                     "Local Party" = 1, 
+                                     "State-based Party" = 2, 
+                                     "State-based Party (Other State" = 3, 
+                                     "National Party" = 4, 
+                                     .default = NA_real_
+  ))
+
 ### Collapse by constituency-state-year
 constituency_metrics <- all_states_elections_1 %>%
   group_by(State_Name, Year, Constituency_Name, Election_Type) %>%
@@ -447,7 +476,7 @@ constituency_metrics <- all_states_elections_1 %>%
     total_votes = max(Valid_Votes, na.rm = TRUE),
     total_votes_to_decoys = sum(Votes[is_decoy], na.rm = TRUE),
     decoy_vote_share = round(sum(Votes[is_decoy], na.rm = TRUE) / max(Valid_Votes, na.rm = TRUE) * 100, 2),
-    winning_margin = min(Margin[Position == 1], na.rm = TRUE),  # Margin of the winner
+    winning_margin = min(Margin[Position == 1], na.rm = TRUE),  # margin of the winner
     winning_margin_percentage = min(Margin_Percentage[Position == 1], na.rm = TRUE),
     winner_party = first(Party[Position == 1]),
     runner_up_party = first(Party[Position == 2]),
@@ -455,6 +484,19 @@ constituency_metrics <- all_states_elections_1 %>%
     runner_up_vote_share = max(Vote_Share_Percentage[Position == 2], na.rm = TRUE),
     winner_has_decoys = any(decoy_for_pid[is_decoy] %in% pid[Position == 1], na.rm = TRUE),
     runner_up_has_decoys = any(decoy_for_pid[is_decoy] %in% pid[Position == 2], na.rm = TRUE),
+    education = mean(MyNeta_education_numeric),
+    
+    # education and party for decoys
+    decoy_education = mean(MyNeta_education_numeric[is_decoy], na.rm = TRUE),
+    decoy_party = mean(Party_type_numeric[is_decoy], na.rm = TRUE),
+    
+    # education and party for main with decoy
+    main_with_decoy_education = mean(MyNeta_education_numeric[pid %in% decoy_for_pid[is_decoy]], na.rm = TRUE),
+    main_with_decoy_party = mean(Party_type_numeric[pid %in% decoy_for_pid[is_decoy]], na.rm = TRUE),
+    
+    # education and party for main without decoy
+    main_without_decoy_education = mean(MyNeta_education_numeric[!(pid %in% decoy_for_pid)], na.rm = TRUE),
+    main_without_decoy_party = mean(Party_type_numeric[!(pid %in% decoy_for_pid)], na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
@@ -503,6 +545,14 @@ state_metrics <- constituency_metrics %>%
     pct_close_races = (close_races / constituency_count) * 100,
     pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
     
+    # education and party
+    decoy_education = mean(decoy_education, na.rm = TRUE), 
+    decoy_party = mean(decoy_party, na.rm = TRUE),
+    main_with_decoy_education = mean(main_with_decoy_education, na.rm = TRUE),
+    main_with_decoy_party = mean(main_with_decoy_party, na.rm = TRUE),
+    main_without_decoy_education = mean(main_without_decoy_education, na.rm = TRUE),
+    main_without_decoy_party = mean(main_without_decoy_party, na.rm = TRUE),
+    
     decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
   )
@@ -510,6 +560,7 @@ state_metrics <- constituency_metrics %>%
 state_metrics_AE <- constituency_metrics_AE %>%
   group_by(State_Name) %>%
   dplyr::summarize(
+    # how many constituencies
     constituency_count = n(),
     
     # number of decoys
@@ -538,6 +589,14 @@ state_metrics_AE <- constituency_metrics_AE %>%
     pct_races_with_decoys = (races_with_decoys / constituency_count) * 100,
     pct_close_races = (close_races / constituency_count) * 100,
     pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
+    
+    # education and party
+    decoy_education = mean(decoy_education, na.rm = TRUE), 
+    decoy_party = mean(decoy_party, na.rm = TRUE),
+    main_with_decoy_education = mean(main_with_decoy_education, na.rm = TRUE),
+    main_with_decoy_party = mean(main_with_decoy_party, na.rm = TRUE),
+    main_without_decoy_education = mean(main_without_decoy_education, na.rm = TRUE),
+    main_without_decoy_party = mean(main_without_decoy_party, na.rm = TRUE),
     
     decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
@@ -546,6 +605,7 @@ state_metrics_AE <- constituency_metrics_AE %>%
 state_metrics_GE <- constituency_metrics_GE %>%
   group_by(State_Name) %>%
   dplyr::summarize(
+    # how many constituencies
     constituency_count = n(),
     
     # number of decoys
@@ -574,6 +634,14 @@ state_metrics_GE <- constituency_metrics_GE %>%
     pct_races_with_decoys = (races_with_decoys / constituency_count) * 100,
     pct_close_races = (close_races / constituency_count) * 100,
     pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
+    
+    # education and party
+    decoy_education = mean(decoy_education, na.rm = TRUE), 
+    decoy_party = mean(decoy_party, na.rm = TRUE),
+    main_with_decoy_education = mean(main_with_decoy_education, na.rm = TRUE),
+    main_with_decoy_party = mean(main_with_decoy_party, na.rm = TRUE),
+    main_without_decoy_education = mean(main_without_decoy_education, na.rm = TRUE),
+    main_without_decoy_party = mean(main_without_decoy_party, na.rm = TRUE),
     
     decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
@@ -965,6 +1033,142 @@ ggsave(
   bg = "white"
 )
 
+### Characteristics of these weirdos
+education_data <- state_metrics %>%
+  dplyr::select(State_Name, 
+         decoy_education, 
+         main_with_decoy_education, 
+         main_without_decoy_education) %>%
+  pivot_longer(
+    cols = c(decoy_education, main_with_decoy_education, main_without_decoy_education),
+    names_to = "candidate_type",
+    values_to = "education_level"
+  ) %>%
+  mutate(candidate_type = factor(candidate_type, 
+                                 levels = c("decoy_education", 
+                                            "main_with_decoy_education", 
+                                            "main_without_decoy_education"),
+                                 labels = c("Decoy Candidates", 
+                                            "Main Candidates (with decoys)", 
+                                            "Main Candidates (no decoys)")))
+
+party_data <- state_metrics %>%
+  dplyr::select(State_Name, 
+         decoy_party, 
+         main_with_decoy_party, 
+         main_without_decoy_party) %>%
+  pivot_longer(
+    cols = c(decoy_party, main_with_decoy_party, main_without_decoy_party),
+    names_to = "candidate_type",
+    values_to = "party_affiliation"
+  ) %>%
+  mutate(candidate_type = factor(candidate_type, 
+                                 levels = c("decoy_party", 
+                                            "main_with_decoy_party", 
+                                            "main_without_decoy_party"),
+                                 labels = c("Decoy Candidates", 
+                                            "Main Candidates (with decoys)", 
+                                            "Main Candidates (no decoys)")))
+
+ggplot(education_data, aes(x = education_level, fill = candidate_type)) +
+  geom_density(alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Years of Education by Candidate Type",
+    x = "Education Years",
+    y = "Density",
+    fill = "Candidate Type"
+  ) +
+  scale_fill_brewer(palette = "Set1") +
+  theme(legend.position = "bottom") + 
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(
+  filename = "Plots/Candidate_education.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+ggplot(party_data, aes(x = party_affiliation, fill = candidate_type)) +
+  geom_density(alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Party Type by Candidate Type",
+    x = "Party Type Score",
+    y = "Density",
+    fill = "Candidate Type"
+  ) +
+  scale_fill_brewer(palette = "Set1") +
+  # x-axis
+  scale_x_continuous(
+    breaks = c(0, 1, 2, 3, 4),
+    labels = c("Independents", "Local", "State", "State (Out of State)", "National")
+  ) +
+  theme(legend.position = "bottom") + 
+  theme(plot.title = element_text(face = "bold"))
+
+ggsave(
+  filename = "Plots/Candidate_party_type.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+ggplot(education_data, aes(x = candidate_type, y = education_level, fill = candidate_type)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Years of Education by Candidate Type",
+    x = "",
+    y = "Education Years"
+  ) +
+  scale_fill_brewer(palette = "Set1") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(
+  filename = "Plots/Candidate_education_box.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+ggplot(party_data, aes(x = candidate_type, y = party_affiliation, fill = candidate_type)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Party Type by Candidate Type",
+    x = "",
+    y = "Party Type Score"
+  ) +
+  scale_fill_brewer(palette = "Set1") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(
+  filename = "Plots/Candidate_party_type_box.png",
+  plot = last_plot(),
+  width = 10,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
 ### Placebo Test - to see whether similarity is distributed differently across major and minor cands
 placebo_results <- list()
 
@@ -1322,8 +1526,8 @@ n_lv <- normalized_levenshtein_matrix(words)
 test <- constituency_metrics %>%
   filter(constituency_metrics$decoy_candidates >= 3)
 
-test_2 <- all_states_GE_1 %>%
-  filter(State_Name == "Andhra_Pradesh" & Constituency_Name == "VIJAYAWADA" & Year == 2014)
+test <- all_states_elections_1 %>%
+  filter(State_Name == "Tamil_Nadu" & Constituency_Name == "KALASAPAKKAM" & Year == 2016 & Election_Type == "State Assembly Election (AE)")
 
 sum(constituency_metrics$decoy_candidates >= 3)
 
