@@ -483,7 +483,7 @@ for (i in 1:nrow(unique_elections)) {
   candidate_pids <- group_data$pid
   
   # calculate the normalized Levenshtein matrix for names - access by index
-  distance_matrix <- normalized_levenshtein_matrix(candidate_names)
+  distance_matrix <- weighted_flexible_levenshtein_matrix(candidate_names)
   
   # check for decoys by comparing each main candidate with each minor candidate
   for (main_idx in 1:nrow(main_candidates)) {
