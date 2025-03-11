@@ -14,7 +14,6 @@
     # so cannot use unique candidate ID - obv. 
   # Bihar (maybe others) have 2 AEs in same year. So, group additionally by Assembly No. 
 
-
 rm(list = ls())
 setwd("/Users/anirvin/Downloads/Political Decoys Data")
 if (!require("pacman")) install.packages("pacman")
@@ -139,10 +138,6 @@ ggsave(
   bg = "white"
 )
 
-unique_elections <- all_states_elections %>%
-  dplyr::select(Year, State_Name, Constituency_Name, Election_Type) %>%
-  distinct()
-
 normalized_levenshtein_matrix <- function(strings) {
   # get raw distance matrix
   raw_dist <- stringdistmatrix(strings, strings, method = "lv")
@@ -164,11 +159,125 @@ normalized_levenshtein_matrix <- function(strings) {
   return(normalized)
 }
 
-# pre-processing the name string (more could be done here) 
-# right now just strip spaces and punctuation
-all_states_elections$Candidate_clean <- gsub(pattern = "[[:space:][:punct:]]", replacement = "", all_states_elections$Candidate)
+# unused but might be cool
+weighted_flexible_levenshtein_matrix <- function(strings, common_name_weight = 0.3) {
+  n <- length(strings)
+  similarity_matrix <- matrix(0, n, n)
+  
+  # tokenize names
+  tokenized_names <- strsplit(strings, "\\s+")
+  
+  # flatten list of all name parts and count occurrences
+  all_names <- unlist(tokenized_names)
+  name_freq <- table(all_names)
+  
+  for (i in 1:n) {
+    for (j in 1:n) {
+      if (i == j) {
+        similarity_matrix[i, j] <- 1  # same string has perfect similarity
+        next
+      }
+      
+      # get tokenized names
+      tokens1 <- tokenized_names[[i]]
+      tokens2 <- tokenized_names[[j]]
+      
+      # safety checks for empty or invalid tokens
+      if (length(tokens1) == 0 || length(tokens2) == 0 || any(is.na(tokens1)) || any(is.na(tokens2))) {
+        similarity_matrix[i, j] <- 0  # No similarity for problematic tokens
+        next
+      }
+      
+      # calculate token-level distance matrix
+      token_dists <- matrix(NA, length(tokens1), length(tokens2))
+      for (k in 1:length(tokens1)) {
+        for (l in 1:length(tokens2)) {
+          token_dists[k, l] <- stringdist(tokens1[k], tokens2[l], method = "lv")
+        }
+      }
+      
+      # normalize token distances to similarities
+      token1_lens <- nchar(tokens1)
+      token2_lens <- nchar(tokens2)
+      
+      max_lens <- matrix(NA, length(tokens1), length(tokens2))
+      for (k in 1:length(tokens1)) {
+        for (l in 1:length(tokens2)) {
+          max_lens[k, l] <- max(token1_lens[k], token2_lens[l])
+          # Prevent division by zero
+          if (max_lens[k, l] == 0) max_lens[k, l] <- 1
+        }
+      }
+      
+      # normalize similarity
+      normalized_token_similarities <- 1 - (token_dists / max_lens)
+      
+      # compute similarity with weights
+      token_weights <- matrix(1, nrow = length(tokens1), ncol = length(tokens2))
+      
+      # reduce weight for common names
+      for (k in 1:length(tokens1)) {
+        for (l in 1:length(tokens2)) {
+          # First check if tokens exist in name_freq before accessing
+          if (tokens1[k] %in% names(name_freq) && tokens2[l] %in% names(name_freq)) {
+            # Get frequency values safely
+            freq1 <- name_freq[tokens1[k]]
+            freq2 <- name_freq[tokens2[l]]
+            
+            # Only apply reduced weight if both tokens are common and values are not NA
+            if (!is.na(freq1) && !is.na(freq2) && freq1 > 1 && freq2 > 1) {
+              token_weights[k, l] <- common_name_weight
+            }
+          }
+        }
+      }
+      
+      # compute weighted similarity
+      sum_weights <- sum(token_weights)
+      if (sum_weights == 0) sum_weights <- 1  # avoid division by zero
+      
+      weighted_similarity <- sum(normalized_token_similarities * token_weights) / sum_weights
+      
+      similarity_matrix[i, j] <- weighted_similarity
+    }
+  }
+  
+  # set diagonal to 1 (perfect match)
+  diag(similarity_matrix) <- 1
+  
+  rownames(similarity_matrix) <- strings
+  colnames(similarity_matrix) <- strings
+  return(similarity_matrix)
+}
 
-# for first try - note pre-processing and threshold of 0.53
+# pre-processing the name string
+all_states_elections$Candidate_clean <- tolower(all_states_elections$Candidate)
+all_states_elections$Candidate_clean <- gsub("(shri|smt|dr|prof|mr|mrs|adv)\\.?\\s*", "", all_states_elections$Candidate_clean, ignore.case = TRUE)
+all_states_elections$Candidate_clean <- gsub("(advocate|(advocate))", "", all_states_elections$Candidate_clean)
+
+# remove periods after initials at the start of names
+all_states_elections$Candidate_clean <- gsub("([A-Za-z])\\. ?([A-Za-z])\\.", "\\1 \\2", all_states_elections$Candidate_clean)
+all_states_elections$Candidate_clean <- gsub("([A-Za-z])\\. ([A-Za-z][a-z]+)", "\\1 \\2", all_states_elections$Candidate_clean)
+
+# remove trailing period at the end of a name
+all_states_elections$Candidate_clean <- gsub("\\.$", "", all_states_elections$Candidate_clean)
+
+# add space after single-letter initials fused with names (e.g., "a.raghu" → "a raghu")
+all_states_elections$Candidate_clean <- gsub("([A-Za-z])\\.([A-Za-z])", "\\1 \\2", all_states_elections$Candidate_clean)
+
+# remove unnecessary periods that appear at the end of a word but before a space (e.g., "nishidha. m" → "nishidha m")
+all_states_elections$Candidate_clean <- gsub("\\. ([A-Za-z])", " \\1", all_states_elections$Candidate_clean)
+
+# remove () and things inside it
+all_states_elections$Candidate_clean <- gsub("\\s*\\([^)]*\\)", "", all_states_elections$Candidate_clean)
+
+# pre-processing to drop NOTA, no name, no voteshare
+all_states_elections <- all_states_elections %>%
+  filter(!is.na(Vote_Share_Percentage) | Vote_Share_Percentage != "") %>%
+  filter(!is.na(pid) | pid != "") %>%
+  filter(Candidate != "NOTA" | Party != "NOTA")
+
+### trying with wlv
 all_states_elections_1 <- all_states_elections
 all_states_elections_1$is_decoy <- FALSE
 all_states_elections_1$decoy_for_pid <- NA_character_
@@ -180,18 +289,19 @@ result_list <- list()
 str(all_states_elections_1)
 
 ### FIRST TEST
-tn <- all_states_elections_1 %>%
-  filter(State_Name == "Tamil_Nadu")
+punjab <- all_states_elections_1 %>%
+  filter(State_Name == "Punjab")
 
-unique_elections <- tn %>%
+unique_elections <- punjab %>%
   dplyr::select(Year, State_Name, Constituency_Name, Election_Type, Assembly_No) %>%
   distinct()
 
-# progress
-current_state <- ""
-states_completed <- c()
-total_states <- length(unique(unique_elections$State_Name))
-state_counter <- 0
+# tracking progress
+obs <- nrow(unique_elections)
+cat("Processing", obs, "unique elections\n")
+
+start_time_total <- Sys.time()
+last_batch_size <- 100
 
 for (i in 1:nrow(unique_elections)) {
   year <- unique_elections$Year[i]
@@ -199,84 +309,83 @@ for (i in 1:nrow(unique_elections)) {
   state <- unique_elections$State_Name[i]
   election_type <- unique_elections$Election_Type[i]
   assembly_no <- unique_elections$Assembly_No[i]
-
-  if (state != current_state) {
-    if (current_state != "") {
-      state_counter <- state_counter + 1
-      cat("\nCompleted state:", current_state, "-", state_counter, "of", total_states,
-          "states (", round(state_counter/total_states*100, 1), "%)\n")
-      states_completed <- c(states_completed, current_state)
-    }
-    current_state <- state
-    cat("\nStarting new state:", current_state, "\n")
+  
+  # print progress every 100 elections
+  if (i %% 100 == 0 || i == 1 || i == total_elections) {
+    current_time <- Sys.time()
+    time_elapsed_total <- as.numeric(difftime(current_time, start_time_total, units = "secs"))
+    
+    cat("Processing Ob", i, "of", obs,
+        "(", round(i/obs*100, 1), "%)\n")
+    cat("  Total elapsed time:", format_time(time_elapsed_total), "\n\n")
   }
-
+  
   # filter data for current group
-  group_data <- tn %>%
+  group_data <- punjab %>%
     filter(Year == year,
            Constituency_Name == constituency,
            State_Name == state,
            Election_Type == election_type,
            Assembly_No == assembly_no)
-
+  
   # mark main and minor candidates
   group_data <- group_data %>%
     mutate(candidate_type = ifelse(Vote_Share_Percentage > 10, "main", "minor"))
-
+  
   # get main and minor candidates
   main_candidates <- group_data %>% filter(candidate_type == "main")
   minor_candidates <- group_data %>% filter(candidate_type == "minor")
-
+  
   # skip if no main or no minor candidates
   if (nrow(main_candidates) == 0 || nrow(minor_candidates) == 0) {
     next
   }
-
+  
   # extract all candidate names and their corresponding pids
   candidate_names <- group_data$Candidate_clean
   candidate_pids <- group_data$pid
-
-  # calculate the normalized Levenshtein matrix for names - access by index
-  distance_matrix <- normalized_levenshtein_matrix(candidate_names)
-
+  
+  # calculate the weighted flexible Levenshtein matrix for names - access by index
+  distance_matrix <- weighted_flexible_levenshtein_matrix(candidate_names)
+  
   # check for decoys by comparing each main candidate with each minor candidate
   for (main_idx in 1:nrow(main_candidates)) {
     main_candidate_name <- main_candidates$Candidate_clean[main_idx]
     main_candidate_pid <- main_candidates$pid[main_idx]
     main_matrix_idx <- which(group_data$pid == main_candidate_pid)
-
+    
     for (minor_idx in 1:nrow(minor_candidates)) {
       minor_candidate_name <- minor_candidates$Candidate_clean[minor_idx]
       minor_candidate_pid <- minor_candidates$pid[minor_idx]
-
+      
       # Skip if comparing the same candidate ID
       if (minor_candidate_pid == main_candidate_pid) {
         next
       }
-
+      
       minor_matrix_idx <- which(group_data$pid == minor_candidate_pid)
-
-      # get the normalized levenshtein similarity using matrix indices
+      
+      # get the similarity using matrix indices
       if (length(main_matrix_idx) == 1 && length(minor_matrix_idx) == 1) {
         lev_similarity <- distance_matrix[main_matrix_idx, minor_matrix_idx]
-
+        
         # check if this is a potential decoy based on similarity threshold
-        if (lev_similarity > 0.53) {
+        if (lev_similarity > 0) {
           # CRITICAL CHANGE: Only update rows for this specific election context
-          decoy_rows <- which(tn$pid == minor_candidate_pid &
-                                tn$Year == year &
-                                tn$Constituency_Name == constituency &
-                                tn$State_Name == state &
-                                tn$Election_Type == election_type &
-                                tn$Assembly_No == assembly_no)
-
+          decoy_rows <- which(punjab$pid == minor_candidate_pid &
+                                punjab$Year == year &
+                                punjab$Constituency_Name == constituency &
+                                punjab$State_Name == state &
+                                punjab$Election_Type == election_type &
+                                punjab$Assembly_No == assembly_no)
+          
           # mark as decoy in the original dataframe only for this specific election
           if (length(decoy_rows) > 0) {
-            tn$is_decoy[decoy_rows] <- TRUE
-            tn$decoy_for_pid[decoy_rows] <- main_candidate_pid
-            tn$decoy_for_name[decoy_rows] <- main_candidate_name
+            punjab$is_decoy[decoy_rows] <- TRUE
+            punjab$decoy_for_pid[decoy_rows] <- main_candidate_pid
+            punjab$decoy_for_name[decoy_rows] <- main_candidate_name
           }
-
+          
           # add to results list for review
           result_list[[length(result_list) + 1]] <- data.frame(
             Year = year,
@@ -305,6 +414,16 @@ for (i in 1:nrow(unique_elections)) {
 test2 <- tn %>%
   filter(Year == 1971 & State_Name == "Tamil_Nadu" & Constituency_Name == "PALANI" & Election_Type == "State Assembly Election (AE)")
 # FUCK YES.
+
+test3 <- punjab %>%
+  filter(Year ==1967)
+
+if (length(result_list) > 0) {
+  decoy_results <- do.call(rbind, result_list)
+  cat("Found", nrow(decoy_results), "potential decoy candidates\n")
+} else {
+  cat("No potential decoy candidates found.\n")
+}
 
 ### Now, for the rest
 unique_elections <- all_states_elections %>%
@@ -468,7 +587,7 @@ all_states_elections_1 <- all_states_elections_1 %>%
 
 ### Collapse by constituency-state-year
 constituency_metrics <- all_states_elections_1 %>%
-  group_by(State_Name, Year, Constituency_Name, Election_Type) %>%
+  group_by(State_Name, Year, Constituency_Name, Election_Type, Assembly_No) %>%
   dplyr::summarize(
     total_candidates = n_distinct(pid),
     decoy_candidates = sum(is_decoy, na.rm = TRUE),
