@@ -4,6 +4,11 @@
 # Date: 11/03/25
 # Author: Anirvin Narayan
 
+### NOTES
+# There are some issues with the cleaning --> some initial are still there like 
+  # manirathinem. .k i in kattumannarkoil TN 2016 AE. 
+
+
 rm(list = ls())
 setwd("/Users/anirvin/Downloads/Political Decoys Data")
 if (!require("pacman")) install.packages("pacman")
@@ -542,11 +547,6 @@ candidate_info_2 <- all_states_elections %>%
 candidate_pairs_merged <- candidate_pairs %>%
   left_join(candidate_info_1, by = join_keys_1) %>%
   left_join(candidate_info_2, by = join_keys_2)
-
-### How do we identify decoys testing!
-
-### Marking of Decoys
-# first mark according to a certain condition
 
 # False positive
 pair_type_summary <- candidate_pairs_merged_2 %>%
