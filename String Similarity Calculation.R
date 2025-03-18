@@ -8,7 +8,6 @@
 # There are some issues with the cleaning --> some initial are still there like 
   # manirathinem. .k i in kattumannarkoil TN 2016 AE. 
 
-
 rm(list = ls())
 setwd("/Users/anirvin/Downloads/Political Decoys Data")
 if (!require("pacman")) install.packages("pacman")
