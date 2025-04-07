@@ -255,10 +255,15 @@ changed_rows <- candidate_pairs_new_minor %>%
 lv_99th <- quantile(candidate_pairs$Levenshtein_Similarity, 0.99, na.rm = TRUE)
 jw_99th <- quantile(candidate_pairs$Jaro_Winkler_Similarity, 0.99, na.rm = TRUE)
 mp_99th <- quantile(candidate_pairs$Metaphone_Similarity, 0.99, na.rm = TRUE)
+mas_99th <- quantile(candidate_pairs$Masala_Similarity, 0.99, na.rm = TRUE)
+ng_99th <- quantile(candidate_pairs$NGram_Similarity, 0.99, na.rm = TRUE)
 
 lv_95th <- quantile(candidate_pairs$Levenshtein_Similarity, 0.95, na.rm = TRUE)
 jw_95th <- quantile(candidate_pairs$Jaro_Winkler_Similarity, 0.95, na.rm = TRUE)
 mp_95th <- quantile(candidate_pairs$Metaphone_Similarity, 0.95, na.rm = TRUE)
+mas_95th <- quantile(candidate_pairs$Masala_Similarity, 0.95, na.rm = TRUE)
+ng_95th <- quantile(candidate_pairs$NGram_Similarity, 0.95, na.rm = TRUE)
+
 
 candidate_pairs <- candidate_pairs %>%
   mutate(is_decoy = ifelse(
@@ -967,16 +972,13 @@ threshold_counts$percentage <- threshold_counts$elections_count / nrow(election_
 
 ggplot(threshold_counts, aes(x = factor(threshold), y = percentage)) +
   geom_bar(stat = "identity", fill = "skyblue") +
-  geom_text(aes(label = sprintf("%.1f%%", percentage)), vjust = -0.5, size = 3.5) +
+  geom_text(aes(label = sprintf("%.2f%%", percentage)), vjust = -0.5, size = 3.5) +
   labs(
-    title = "Percentage of Elections with Main-Minor Decoys Above Thresholds",
+    title = "Percentage of Elections with Decoys above Thresholds",
     x = "Percentage of Main-Minor Decoys (At Least (>=))",
     y = "Percentage of Elections"
   ) +
-  theme_minimal() + 
-  theme(
-    plot.title = element_text(face = "bold")
-  )
+  theme_minimal()
 
 ggsave(
   filename = "190325 meeting plots/Main_Minor_Decoy_Histogram.png",
@@ -1691,7 +1693,7 @@ election_flip_examples <- top_examples %>%
     `Winner Vote %` = winner_vote_share,
     `Margin (% pts)` = vote_difference
   ) %>%
-  # format numeric columns for display
+  # format stuff
   mutate(
     `Original Vote %` = sprintf("%.2f%%", `Original Vote %`),
     `Combined Vote %` = sprintf("%.2f%%", `Combined Vote %`),
@@ -1720,7 +1722,7 @@ election_flip_examples %>%
   opt_all_caps() %>%
   opt_table_lines(extent = "none")
 
-# Combine plots
+# combine plots
 if (length(plot_list) > 0) {
   combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 2))
   ggsave("decoy_impact_examples.png", combined_plot, width = 12, height = 8)
@@ -1775,7 +1777,7 @@ election_flip_examples <- bottom_examples %>%
     `Winner Vote %` = winner_vote_share,
     `Margin (% pts)` = vote_difference
   ) %>%
-  # format numeric columns for display
+  # format stuff
   mutate(
     `Original Vote %` = sprintf("%.2f%%", `Original Vote %`),
     `Combined Vote %` = sprintf("%.2f%%", `Combined Vote %`),
@@ -1825,9 +1827,39 @@ nrow(election_outcomes_changed) / nrow(unique_elections_w_decoys) * 100
 
 nrow(election_outcomes_changed) / nrow(unique_elections) * 100
 
+for (i in 1:nrow(election_outcomes_changed)) {
+  example <- election_outcomes_changed[i,]
+  
+  # get the decoy details for this election
+  decoys_info <- all_states_elections %>%
+    filter(Year == example$Year,
+           State_Name == example$State_Name,
+           Constituency_Name == example$Constituency_Name,
+           Assembly_No == example$Assembly_No,
+           Election_Type == example$Election_Type,
+           pid %in% unlist(grouped_decoys$decoy_pids[
+             grouped_decoys$Year == example$Year &
+               grouped_decoys$State_Name == example$State_Name &
+               grouped_decoys$Constituency_Name == example$Constituency_Name &
+               grouped_decoys$Assembly_No == example$Assembly_No &
+               grouped_decoys$Election_Type == example$Election_Type &
+               grouped_decoys$main_pid == example$main_candidate_pid
+           ])) %>%
+    dplyr::select(Candidate, Vote_Share_Percentage)
+  
+  # create a string with decoy names and vote shares
+  decoy_details <- paste(
+    sapply(1:nrow(decoys_info), function(j) {
+      sprintf("%s (%.2f%%)", decoys_info$Candidate[j], decoys_info$Vote_Share_Percentage[j])
+    }),
+    collapse = "; "
+  )
+  
+  # add to the election_outcomes_changed dataframe
+  election_outcomes_changed$decoy_details[i] <- decoy_details
+}
+
 ### Education
-
-
 # finally, education & party
 str(all_states_elections)
 
@@ -1922,5 +1954,148 @@ ggsave(
   device = "png", 
   bg = "white"
 )
+
+### What do minor-minor and main-main decoys look like? 
+candidate_pairs_minor_minor_filtered <- candidate_pairs_minor_minor[
+  !(candidate_pairs_minor_minor$Candidate1_PID %in% overlap_candidates | 
+      candidate_pairs_minor_minor$Candidate2_PID %in% overlap_candidates), 
+]
+
+candidate_pairs_minor_minor_sample <- candidate_pairs_minor_minor_filtered %>%
+  sample_n(min(15, nrow(.))) %>%
+  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, 
+                NGram_Similarity, Masala_Similarity, Metaphone_Similarity)
+
+candidate_pairs_minor_minor_sample %>%
+  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, Metaphone_Similarity, 
+                NGram_Similarity, Masala_Similarity) %>%
+  gt(groupname_col = "Pair_Type") %>%
+  # 3dp
+  fmt_number(
+    columns = c(Levenshtein_Similarity, Jaro_Winkler_Similarity, 
+                Metaphone_Similarity, Masala_Similarity, NGram_Similarity),
+    decimals = 3
+  ) %>%
+  data_color(
+    columns = Levenshtein_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(lv_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Jaro_Winkler_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(jw_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Metaphone_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(mp_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = NGram_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(ng_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Masala_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(mas_99th, 1)
+    )
+  ) %>%
+  tab_header(
+    title = "High Similarity Candidate Pairs (Above 99th Percentile) Minor-Minor",
+  ) %>%
+  cols_label(
+    Candidate1_Name = "Name 1",
+    Candidate2_Name = "Name 2",
+    Levenshtein_Similarity = "Levenshtein",
+    Jaro_Winkler_Similarity = "Jaro-Winkler",
+    Metaphone_Similarity = "Metaphone", 
+    Masala_Similarity = "Masala",
+    NGram_Similarity = "NGram"
+  )
+
+candidate_pairs_main_main_sample <- candidate_pairs_main_main %>%
+  sample_n(min(15, nrow(.))) %>%
+  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, 
+                NGram_Similarity, Masala_Similarity, Metaphone_Similarity)
+
+candidate_pairs_main_main_sample %>%
+  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, Metaphone_Similarity, 
+                NGram_Similarity, Masala_Similarity) %>%
+  gt(groupname_col = "Pair_Type") %>%
+  # 3dp
+  fmt_number(
+    columns = c(Levenshtein_Similarity, Jaro_Winkler_Similarity, 
+                Metaphone_Similarity, Masala_Similarity, NGram_Similarity),
+    decimals = 3
+  ) %>%
+  data_color(
+    columns = Levenshtein_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(lv_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Jaro_Winkler_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(jw_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Metaphone_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(mp_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = NGram_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(ng_99th, 1)
+    )
+  ) %>%
+  data_color(
+    columns = Masala_Similarity,
+    fn = col_numeric(
+      palette = c("pink", "yellow", "lightgreen"),
+      domain = c(mas_99th, 1)
+    )
+  ) %>%
+  tab_header(
+    title = "High Similarity Candidate Pairs (Above 99th Percentile) Main-Main",
+  ) %>%
+  cols_label(
+    Candidate1_Name = "Name 1",
+    Candidate2_Name = "Name 2",
+    Levenshtein_Similarity = "Levenshtein",
+    Jaro_Winkler_Similarity = "Jaro-Winkler",
+    Metaphone_Similarity = "Metaphone", 
+    Masala_Similarity = "Masala",
+    NGram_Similarity = "NGram"
+  )
+
+### WEIRD SHIT
+  # in 1995 elections theres a decoy for a "dilip kumar yadav" from JD
+  # in 2000, that "dilip kumar yadav" identified by permanent ID is now an independent candidate. he is main. 
+  # now there is another, different "dilip kumar yadav" from SP. 
+dhamdaha_BH_1995_AE <- candidate_pairs %>%
+  filter(Year == "1995" & State_Name == "Bihar" & Constituency_Name == "DHAMDAHA" & Election_Type == "State Assembly Election (AE)")
+
+dhamdaha_BH_2000_AE <- candidate_pairs %>%
+  filter(Year == "2000" & State_Name == "Bihar" & Constituency_Name == "DHAMDAHA" & Election_Type == "State Assembly Election (AE)")
+
 
 ### Notes
