@@ -523,11 +523,54 @@ candidate_pairs_test_llm <- bind_rows(result_list)
 kattumannarkoil_TN_2016_AE <- candidate_pairs %>%
   filter(Year == "2016" & State_Name == "Tamil_Nadu" & Constituency_Name == "KATTUMANNARKOIL" & Election_Type == "State Assembly Election (AE)")
 
-
-
-
-
 # 2. NLP shit --> DOES NOT WORK YET! 
+
+### first, we need a state to lang match
+str(candidate_pairs)
+unique(candidate_pairs$State_Name)
+
+# Andhra_Pradesh = Telugu
+# Bihar = Hindi
+# Meghalaya = English
+# Madhya Pradesh = Hindi
+# Mizoram = English
+# Tamil_Nadu = Tamil
+# Manipur = English
+# Mysore = Kannada
+# Kerala = Malayalam
+# Jharkhand = Hindi
+# Tripura = English
+# Karnataka = Kannada
+# Assam = Assamese
+# Delhi = Hindi
+# West_Bengal = Bengali
+# Himachal_Pradesh = Hindi
+# Maharahstra = Marathi
+# Uttarakhand = Hindi
+# Punjab = Punjabi
+# Sikkim = English
+# Nagaland = English
+# Jammu_&_Kashmir = Hindi
+# Arunachal_Pradesh = English
+# Haryana = Hindi
+# Chattisgarh = Hindi
+# Puducherry = Tamil
+# Uttar_Pradesh = Hindi
+# Rajasthan = Hindi
+# Madras = Tamil
+# Goa_Daman_Diu = Hindi
+# Goa = Konkani
+# Odisha = Odia
+# Gujarat = Gujarati
+# Telangana = Telugu
+# Andaman_&_Nicobar_Islands = English
+# Chandigarh = Punjabi
+# Dadra_&_Nagar_Haveli = Hindi
+# Daman_&_Diu = Hindi
+# Lakshwadeep = Malayalam
+# Dadra & Nagar Haveli And Daman & Diu = Hindi
+# Goa,_Daman_&_Diu = Hindi
+
 # create a virtual python environment for indic nlp access (i think this is easier --> 
 # as opposed to bringing all of the functions into R like i did with masala merge)
 virtualenv_create("indic_nlp_env")
@@ -906,3 +949,8 @@ test_hindi = '", hindi_test, "'
 test_latin = UnicodeIndicTransliterator.transliterate(test_hindi, 'hi', 'en')
 print('Hindi to Latin:', test_latin)
 "))
+
+# how many decoy pairs
+decoy_pairs <- candidate_pairs %>%
+  filter(is_decoy == TRUE)
+
