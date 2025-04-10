@@ -4,6 +4,10 @@
 # Date: 09/04/25
 # Author: Anirvin Narayan
 
+### Big Notes: There are some issues
+# First of all not all elections were processed. Check which werent and append accordingly. 
+# Second, for some reason this shit takes time. Figure out why. 
+
 rm(list = ls())
 setwd("/Users/anirvin/Downloads/Political Decoys Data")
 if (!require("pacman")) install.packages("pacman")
@@ -610,20 +614,50 @@ subset <- clea_data_filtered %>%
 # total_time <- as.numeric(difftime(end_time_total, start_time_total, units = "secs"))
 
 candidate_pairs <- data.frame()
-result_list <- list()
 total_elections <- nrow(unique_elections)
 
 start_time_total <- Sys.time()
 last_batch_size <- 100
 
-# result_list <- readRDS("partial_results_list.rds")
-list_index <- length(result_list) + 1  # continue from where we left off
-start_time_total <- Sys.time()  # reset the timer for the new session
+### just double checking, do we have as many elections in partials list 
+# create a function to extract election identifiers
+get_election_id <- function(result_list) {
+  if(is.data.frame(result_list)) {
+    return(paste(result_list$Year, 
+                 result_list$Country_Code, 
+                 result_list$Constituency_Name, 
+                 result_list$Election_Month, 
+                 result_list$Election_ID, 
+                 sep = "_"))
+  } else {
+    return(NA)
+  }
+}
 
-last_processed_i <- 14000
+# ext ract unique election identifiers
+election_ids <- sapply(result_list, get_election_id)
+unique_election_ids <- unique(election_ids[!is.na(election_ids)])
+
+# count of unique elections
+num_elections <- length(unique_election_ids)
+
+list_index <- length(result_list) + 1  # continue from where we left off
+
+# get the last item in the result list
+last_result <- result_list[[length(result_list)]]
+
+# find the corresponding index in unique_elections
+last_processed_i <- which(unique_elections$yr == last_result$Year &
+                            unique_elections$ctr == last_result$Country_Code &
+                            unique_elections$cst_n == last_result$Constituency_Name &
+                            unique_elections$mn == last_result$Election_Month &
+                            unique_elections$id == last_result$Election_ID)
 
 starting_i <- last_processed_i + 1
+total_elections <- nrow(unique_elections)
+start_time_total <- Sys.time()  # reset the timer for the new session
 cat("Restarting from election", starting_i, "of", total_elections, "\n")
+
 
 for (i in starting_i:nrow(unique_elections)) {
   # election details
@@ -734,7 +768,44 @@ for (i in starting_i:nrow(unique_elections)) {
 # Create the final dataframe and filling it with candidate info
 candidate_pairs <- bind_rows(result_list)
 
-pair_type_summary <- candidate_pairs %>%
+chunk_size <- 1000
+total_chunks <- ceiling(length(result_list) / chunk_size)
+final_df <- data.frame()
+
+for (i in 1:total_chunks) {
+  start_idx <- ((i-1) * chunk_size) + 1
+  end_idx <- min(i * chunk_size, length(result_list))
+  
+  cat("Processing chunk", i, "of", total_chunks, "(items", start_idx, "to", end_idx, ")\n")
+  
+  # Process one chunk at a time
+  chunk_df <- bind_rows(result_list[start_idx:end_idx])
+  
+  # Either save each chunk
+  chunk_filename <- paste0("candidate_pairs_chunk_", i, ".rds")
+  saveRDS(chunk_df, chunk_filename)
+  
+  # Or append to a growing dataframe if memory permits
+  final_df <- bind_rows(final_df, chunk_df)
+}
+
+# fpr tje rest
+chunk_size <- 1000  # Make sure this is the same as before
+last_completed_chunk <- 477
+
+# Continue processing from the next chunk
+for (i in (last_completed_chunk + 1):total_chunks) {
+  start_idx <- ((i-1) * chunk_size) + 1
+  end_idx <- min(i * chunk_size, length(result_list))
+  
+  cat("Processing chunk", i, "of", total_chunks, "\n")
+  
+  # Process current chunk and append
+  chunk_df <- bind_rows(result_list[start_idx:end_idx])
+  final_df <- bind_rows(final_df, chunk_df)
+}
+
+pair_type_summary <- final_df %>%
   group_by(Pair_Type) %>%
   dplyr::summarize(
     Count = n(),
@@ -745,4 +816,4 @@ pair_type_summary <- candidate_pairs %>%
   )
 
 # Saving
-write_csv(candidate_pairs_merged, "Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA.csv")
+write_csv(final_df, "Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA.csv")
