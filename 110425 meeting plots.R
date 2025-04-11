@@ -55,18 +55,33 @@ pacman::p_load(
 
 ### Loading
 all_states_elections <- read.csv("Raw Data/all_states_elections.csv")
+CLEA_cleaned <- read.csv("Cleaned Data/CLEA_cleaned.csv")
 candidate_pairs <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet.csv")
+candidate_pairs_CLEA <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA.csv")
+
+### Random testing
+# subset russia from candidate pairs
+russia_pairs <- candidate_pairs_CLEA %>%
+  filter(Country_Code == 643)
+
+unique_elections_CLEA <- CLEA_cleaned %>%
+  dplyr::select(ctr, yr, mn, cst_n, id) %>%
+  # summarize and count number of candidates per election
+  group_by(ctr, yr, mn, cst_n, id) %>%
+  summarise(
+    num_candidates = n(),
+    .groups = "drop"
+  ) %>%
+  distinct()
+
+ggplot(unique_elections_CLEA, aes(x = num_candidates)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  theme_minimal()
+
+quantile(unique_elections_CLEA$num_candidates, probs = seq(0, 1, 0.01))
 
 candidate_pairs <- candidate_pairs %>%
   filter(Candidate1_Party != "NOTA" & Candidate2_Party != "NOTA")
-
-# how many main/minor candidates? # 30% main, 70% minor
-total_main <- sum(all_states_elections$Vote_Share_Percentage > 10, na.rm = TRUE)
-total_minor <- sum(all_states_elections$Vote_Share_Percentage < 10, na.rm = TRUE)
-total <- sum(all_states_elections$Vote_Share_Percentage > 0, na.rm = TRUE)
-
-total_minor/total
-total_main/total
 
 ### editing candidate_pairs 
 str(candidate_pairs)
@@ -283,9 +298,17 @@ candidate_pairs_new_minor <- candidate_pairs_new_minor %>%
     FALSE
   ))
 
-str(candidate_pairs)
-
 ### how are main_main, main_minor and minor_minor different? false positives? 
+# have to identify these candidates according to election, not just pid
+# because for example, a minor candidate can be a decoy of a minor candidate in one election
+# but not in the same election as when they are a decoy of a main candidate
+
+candidate_pairs <- candidate_pairs %>%
+  mutate(
+    Candidate1_Election_ID = paste(Year, State_Name, Constituency_Name, Assembly_No, Election_Type, Candidate1_PID, sep = "_"),
+    Candidate2_Election_ID = paste(Year, State_Name, Constituency_Name, Assembly_No, Election_Type, Candidate2_PID, sep = "_")
+  )
+
 candidate_pairs_main_minor <- candidate_pairs %>%
   filter(Pair_Type == "main-minor" | Pair_Type == "minor-main", 
          is_decoy == TRUE)
@@ -299,17 +322,17 @@ candidate_pairs_minor_minor <- candidate_pairs %>%
          is_decoy == TRUE)
 
 minor_candidates_that_are_decoys_of_minor <- unique(c(
-  candidate_pairs_minor_minor$Candidate1_PID,
-  candidate_pairs_minor_minor$Candidate2_PID
+  candidate_pairs_minor_minor$Candidate1_Election_ID,
+  candidate_pairs_minor_minor$Candidate2_Election_ID
 ))
 
 minor_candidates_that_are_decoys_of_main <- unique(c(
   candidate_pairs_main_minor %>% 
     filter(Pair_Type == "minor-main") %>% 
-    pull(Candidate1_PID),
+    pull(Candidate1_Election_ID),
   candidate_pairs_main_minor %>% 
     filter(Pair_Type == "main-minor") %>% 
-    pull(Candidate2_PID)
+    pull(Candidate2_Election_ID)
 ))
 
 overlap_candidates <- intersect(minor_candidates_that_are_decoys_of_minor, minor_candidates_that_are_decoys_of_main)
@@ -330,8 +353,8 @@ elections_with_main_main_decoys <- candidate_pairs %>%
 # removed overlap minor candidates! 
 elections_with_minor_minor_decoys <- candidate_pairs %>%
   filter((Pair_Type == "minor-minor") & is_decoy == TRUE) %>%
-  filter(!(Candidate1_PID %in% minor_candidates_that_are_decoys_of_main | 
-             Candidate2_PID %in% minor_candidates_that_are_decoys_of_main)) %>%
+  filter(!(Candidate1_Election_ID %in% minor_candidates_that_are_decoys_of_main | 
+             Candidate2_Election_ID %in% minor_candidates_that_are_decoys_of_main)) %>%
   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
   nrow()
 
@@ -404,129 +427,129 @@ ggsave(
   bg = "white"
 )
 
-# ### how are main_main, main_minor and minor_minor different? false positives? 
-# candidate_pairs_main_minor <- candidate_pairs_new_minor %>%
-#   filter(Pair_Type == "main-minor" | Pair_Type == "minor-main", 
-#          is_decoy == TRUE)
-# 
-# candidate_pairs_main_main <- candidate_pairs_new_minor %>%
-#   filter(Pair_Type == "main-main", 
-#          is_decoy == TRUE)
-# 
-# candidate_pairs_minor_minor <- candidate_pairs_new_minor %>%
-#   filter(Pair_Type == "minor-minor", 
-#          is_decoy == TRUE)
-# 
-# minor_candidates_that_are_decoys_of_minor <- unique(c(
-#   candidate_pairs_minor_minor$Candidate1_PID,
-#   candidate_pairs_minor_minor$Candidate2_PID
-# ))
-# 
-# minor_candidates_that_are_decoys_of_main <- unique(c(
-#   candidate_pairs_main_minor %>% 
-#     filter(Pair_Type == "minor-main") %>% 
-#     pull(Candidate1_PID),
-#   candidate_pairs_main_minor %>% 
-#     filter(Pair_Type == "main-minor") %>% 
-#     pull(Candidate2_PID)
-# ))
-# 
-# overlap_candidates <- intersect(minor_candidates_that_are_decoys_of_minor, minor_candidates_that_are_decoys_of_main)
-# 
-# length(overlap_candidates)
-# length(overlap_candidates) / length(minor_candidates_that_are_decoys_of_minor) * 100
-# 
-# elections_with_main_minor_decoys <- candidate_pairs_new_minor %>%
-#   filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE) %>%
-#   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
-#   nrow()
-# 
-# elections_with_main_main_decoys <- candidate_pairs_new_minor %>%
-#   filter(Pair_Type == "main-main" & is_decoy == TRUE) %>%
-#   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
-#   nrow()
-# 
-# # removed overlap minor candidates! 
-# elections_with_minor_minor_decoys <- candidate_pairs_new_minor %>%
-#   filter((Pair_Type == "minor-minor") & is_decoy == TRUE) %>%
-#   filter(!(Candidate1_PID %in% minor_candidates_that_are_decoys_of_main | 
-#              Candidate2_PID %in% minor_candidates_that_are_decoys_of_main)) %>%
-#   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
-#   nrow()
-# 
-# total_elections <- candidate_pairs_new_minor %>%
-#   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
-#   nrow()
-# 
-# elections_with_decoys_df <- data.frame(
-#   Consolidated_Pair_Type = c("main-minor/minor-main", "main-main", "minor-minor"),
-#   pct_elections_with_decoys = c(
-#     elections_with_main_minor_decoys / total_elections * 100,
-#     elections_with_main_main_decoys / total_elections * 100,
-#     elections_with_minor_minor_decoys / total_elections * 100
-#   )
-# )
-# 
-# decoy_by_pair_type <- candidate_pairs_new_minor %>%
-#   # creae a new consolidated pair type variable
-#   mutate(
-#     Consolidated_Pair_Type = case_when(
-#       Pair_Type == "main-minor" ~ "main-minor/minor-main",
-#       Pair_Type == "minor-main" ~ "main-minor/minor-main",
-#       TRUE ~ Pair_Type
-#     )
-#   ) %>%
-#   # in "minor-minor" collapse dont have minor candidates that are decoys of main
-#   filter(!(Consolidated_Pair_Type == "minor-minor" & 
-#              (Candidate1_PID %in% minor_candidates_that_are_decoys_of_main | 
-#                 Candidate2_PID %in% minor_candidates_that_are_decoys_of_main))) %>%
-#   # group by the consolidated pair type
-#   group_by(Consolidated_Pair_Type) %>%
-#   # calculate summary statistics
-#   dplyr::summarize(
-#     total_pairs = n(),
-#     decoy_pairs = sum(is_decoy, na.rm = TRUE),
-#     pct_decoy = round(decoy_pairs / total_pairs * 100, 2),
-#     .groups = "drop"
-#   )
-# 
-# plot_data <- bind_rows(
-#   decoy_by_pair_type %>% 
-#     dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
-#     mutate(metric = "% of Pairs that are Decoys"),
-#   
-#   elections_with_decoys_df %>%
-#     dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
-#     mutate(metric = "% of Elections with Decoys")
-# )
-# 
-# ggplot(plot_data, aes(x = Consolidated_Pair_Type, y = percentage, fill = metric)) +
-#   geom_bar(stat = "identity", position = "dodge") +
-#   geom_text(aes(label = sprintf("%.2f%%", percentage)), 
-#             position = position_dodge(width = 0.9), 
-#             vjust = -0.5, size = 3) +
-#   scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, max(plot_data$percentage) * 1.1)) +
-#   labs(title = "Decoy Pairs by Pair Type (Not Minor if National Party)",
-#        x = "Pair Type",
-#        y = "Percentage",
-#        fill = "Metric") +
-#   theme_minimal() +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-# 
-# ggsave(
-#   filename = "110425 meeting plots/Decoy_pairs_by_type_new_minor.png",
-#   plot = last_plot(),
-#   width = 12,
-#   height = 6,
-#   dpi = 300,
-#   device = "png", 
-#   bg = "white"
-# )
-# 
-# all_states_elections_minor <- all_states_elections %>%
-#   filter(Vote_Share_Percentage < 10, na.rm = TRUE)
-# 
-# sum(all_states_elections_minor$Party == "INC" | all_states_elections_minor$Party == "BJP")
+### how are main_main, main_minor and minor_minor different? false positives?
+candidate_pairs_main_minor <- candidate_pairs_new_minor %>%
+  filter(Pair_Type == "main-minor" | Pair_Type == "minor-main",
+         is_decoy == TRUE)
+
+candidate_pairs_main_main <- candidate_pairs_new_minor %>%
+  filter(Pair_Type == "main-main",
+         is_decoy == TRUE)
+
+candidate_pairs_minor_minor <- candidate_pairs_new_minor %>%
+  filter(Pair_Type == "minor-minor",
+         is_decoy == TRUE)
+
+minor_candidates_that_are_decoys_of_minor <- unique(c(
+  candidate_pairs_minor_minor$Candidate1_PID,
+  candidate_pairs_minor_minor$Candidate2_PID
+))
+
+minor_candidates_that_are_decoys_of_main <- unique(c(
+  candidate_pairs_main_minor %>%
+    filter(Pair_Type == "minor-main") %>%
+    pull(Candidate1_PID),
+  candidate_pairs_main_minor %>%
+    filter(Pair_Type == "main-minor") %>%
+    pull(Candidate2_PID)
+))
+
+overlap_candidates <- intersect(minor_candidates_that_are_decoys_of_minor, minor_candidates_that_are_decoys_of_main)
+
+length(overlap_candidates)
+length(overlap_candidates) / length(minor_candidates_that_are_decoys_of_minor) * 100
+
+elections_with_main_minor_decoys <- candidate_pairs_new_minor %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+elections_with_main_main_decoys <- candidate_pairs_new_minor %>%
+  filter(Pair_Type == "main-main" & is_decoy == TRUE) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+# removed overlap minor candidates!
+elections_with_minor_minor_decoys <- candidate_pairs_new_minor %>%
+  filter((Pair_Type == "minor-minor") & is_decoy == TRUE) %>%
+  filter(!(Candidate1_PID %in% minor_candidates_that_are_decoys_of_main |
+             Candidate2_PID %in% minor_candidates_that_are_decoys_of_main)) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+total_elections <- candidate_pairs_new_minor %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+elections_with_decoys_df <- data.frame(
+  Consolidated_Pair_Type = c("main-minor/minor-main", "main-main", "minor-minor"),
+  pct_elections_with_decoys = c(
+    elections_with_main_minor_decoys / total_elections * 100,
+    elections_with_main_main_decoys / total_elections * 100,
+    elections_with_minor_minor_decoys / total_elections * 100
+  )
+)
+
+decoy_by_pair_type <- candidate_pairs_new_minor %>%
+  # creae a new consolidated pair type variable
+  mutate(
+    Consolidated_Pair_Type = case_when(
+      Pair_Type == "main-minor" ~ "main-minor/minor-main",
+      Pair_Type == "minor-main" ~ "main-minor/minor-main",
+      TRUE ~ Pair_Type
+    )
+  ) %>%
+  # in "minor-minor" collapse dont have minor candidates that are decoys of main
+  filter(!(Consolidated_Pair_Type == "minor-minor" &
+             (Candidate1_PID %in% minor_candidates_that_are_decoys_of_main |
+                Candidate2_PID %in% minor_candidates_that_are_decoys_of_main))) %>%
+  # group by the consolidated pair type
+  group_by(Consolidated_Pair_Type) %>%
+  # calculate summary statistics
+  dplyr::summarize(
+    total_pairs = n(),
+    decoy_pairs = sum(is_decoy, na.rm = TRUE),
+    pct_decoy = round(decoy_pairs / total_pairs * 100, 2),
+    .groups = "drop"
+  )
+
+plot_data <- bind_rows(
+  decoy_by_pair_type %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys"),
+
+  elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys")
+)
+
+ggplot(plot_data, aes(x = Consolidated_Pair_Type, y = percentage, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f%%", percentage)),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, max(plot_data$percentage) * 1.1)) +
+  labs(title = "Decoy Pairs by Pair Type (Not Minor if National Party)",
+       x = "Pair Type",
+       y = "Percentage",
+       fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/Decoy_pairs_by_type_new_minor.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png",
+  bg = "white"
+)
+
+all_states_elections_minor <- all_states_elections %>%
+  filter(Vote_Share_Percentage < 10, na.rm = TRUE)
+
+sum(all_states_elections_minor$Party == "INC" | all_states_elections_minor$Party == "BJP")
 
 ### Sensitivity of decoy numbers around 99th percentile
 # function to analyze decoys at given percentile thresholds
@@ -962,6 +985,26 @@ baseline_false_positive_rate <- mean(c(
     pull(pct_decoy)
 ))
 
+# alternative baseline fp rate
+baseline_false_positive_rate_2 <- 
+  decoy_by_pair_type %>% 
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+  pull(pct_decoy) * 
+  (mean(
+  (decoy_by_pair_type %>% 
+     filter(Consolidated_Pair_Type == "main-main") %>% 
+     pull(pct_decoy))/
+    decoy_by_pair_type %>% 
+    filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+    pull(pct_decoy), 
+  (decoy_by_pair_type %>% 
+     filter(Consolidated_Pair_Type == "minor-minor") %>% 
+     pull(pct_decoy))/
+    decoy_by_pair_type %>% 
+    filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+    pull(pct_decoy))
+)
+
 # how many main-minor/minor-main decoy pairs to keep
 # first get the total number of main-minor/minor-main pairs
 main_minor_total_pairs <- decoy_by_pair_type %>%
@@ -1116,9 +1159,657 @@ ggsave(
   bg = "white"
 )
 
-# summaries at election level
-election_decoys <- candidate_pairs %>%
-  group_by(Year, State_Name, Constituency_Name, Election_Type, Assembly_No) %>%
+# using alternative baseline positive rate
+# how many main-minor/minor-main decoy pairs to keep
+# first get the total number of main-minor/minor-main pairs
+main_minor_total_pairs <- decoy_by_pair_type %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>%
+  pull(total_pairs)
+
+# how many decoy pairs should remain to match the baseline rate
+main_minor_decoys_to_keep <- round(main_minor_total_pairs * baseline_false_positive_rate_2 / 100)
+
+# get the current number of decoy pairs
+main_minor_current_decoys <- decoy_by_pair_type %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>%
+  pull(decoy_pairs)
+
+# calculate how many to remove
+main_minor_decoys_to_remove <- main_minor_current_decoys - main_minor_decoys_to_keep
+
+# create a modified version of candidate_pairs with randomly removed decoys
+set.seed(123)
+
+# get indices of main-minor/minor-main decoy pairs to keep
+main_minor_decoy_pairs <- candidate_pairs %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE)
+
+decoys_to_remove <- main_minor_decoy_pairs %>%
+  sample_n(main_minor_decoys_to_remove)
+
+# create adjusted candidate_pairs dataset
+adjusted_candidate_pairs <- candidate_pairs %>%
+  anti_join(decoys_to_remove, by = c("Candidate1_PID", "Candidate2_PID", "Year", "State_Name", 
+                                     "Constituency_Name", "Assembly_No", "Election_Type"))
+
+# now, recalculate everything
+
+# recreate elections with decoys calculations
+adjusted_elections_with_main_minor_decoys <- adjusted_candidate_pairs %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+adjusted_elections_with_main_main_decoys <- adjusted_candidate_pairs %>%
+  filter(Pair_Type == "main-main" & is_decoy == TRUE) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+# recalculate minor candidates that are decoys of main
+adjusted_minor_candidates_that_are_decoys_of_main <- unique(c(
+  adjusted_candidate_pairs %>% 
+    filter(Pair_Type == "minor-main", is_decoy == TRUE) %>% 
+    pull(Candidate1_PID),
+  adjusted_candidate_pairs %>% 
+    filter(Pair_Type == "main-minor", is_decoy == TRUE) %>% 
+    pull(Candidate2_PID)
+))
+
+adjusted_elections_with_minor_minor_decoys <- adjusted_candidate_pairs %>%
+  filter((Pair_Type == "minor-minor") & is_decoy == TRUE) %>%
+  filter(!(Candidate1_PID %in% adjusted_minor_candidates_that_are_decoys_of_main | 
+             Candidate2_PID %in% adjusted_minor_candidates_that_are_decoys_of_main)) %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+# get total elections
+total_elections <- adjusted_candidate_pairs %>%
+  distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
+  nrow()
+
+# create new data frames for plotting
+adjusted_elections_with_decoys_df <- data.frame(
+  Consolidated_Pair_Type = c("main-minor/minor-main", "main-main", "minor-minor"),
+  pct_elections_with_decoys = c(
+    adjusted_elections_with_main_minor_decoys / total_elections * 100,
+    adjusted_elections_with_main_main_decoys / total_elections * 100,
+    adjusted_elections_with_minor_minor_decoys / total_elections * 100
+  )
+)
+
+# recalculate decoy by pair type
+adjusted_decoy_by_pair_type <- adjusted_candidate_pairs %>%
+  mutate(
+    Consolidated_Pair_Type = case_when(
+      Pair_Type == "main-minor" ~ "main-minor/minor-main",
+      Pair_Type == "minor-main" ~ "main-minor/minor-main",
+      TRUE ~ Pair_Type
+    )
+  ) %>%
+  filter(!(Consolidated_Pair_Type == "minor-minor" & 
+             (Candidate1_PID %in% adjusted_minor_candidates_that_are_decoys_of_main | 
+                Candidate2_PID %in% adjusted_minor_candidates_that_are_decoys_of_main))) %>%
+  group_by(Consolidated_Pair_Type) %>%
+  dplyr::summarize(
+    total_pairs = n(),
+    decoy_pairs = sum(is_decoy, na.rm = TRUE),
+    pct_decoy = round(decoy_pairs / total_pairs * 100, 2),
+    .groups = "drop"
+  )
+
+# combine for plotting
+adjusted_plot_data <- bind_rows(
+  adjusted_decoy_by_pair_type %>% 
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys",
+           adjusted = TRUE),
+  
+  adjusted_elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys",
+           adjusted = TRUE), 
+  
+  decoy_by_pair_type %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys",
+           adjusted = FALSE), 
+  
+  elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys",
+           adjusted = FALSE)
+)
+
+# we just need the main-minor bars 
+adjusted_adjusted_plot_data <- adjusted_plot_data %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main")
+
+adjusted_adjusted_plot_data$adjusted <- factor(adjusted_adjusted_plot_data$adjusted, 
+                                               levels = c(FALSE, TRUE), 
+                                               labels = c("Not Adjusted", "Adjusted"))
+
+# plot
+ggplot(adjusted_adjusted_plot_data, aes(x = adjusted, y = percentage, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f%%", percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x, "%"), 
+                     limits = c(0, max(adjusted_plot_data$percentage) * 1.1)) +
+  labs(title = "Decoy Pairs by Pair Type (With Random Removal Adjustment)",
+       subtitle = paste0("Baseline false positive rate: ", round(baseline_false_positive_rate_2, 2), "%"),
+       x = "Pair Type",
+       y = "Percentage",
+       fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/Decoy_pairs_by_type_random_removal_3.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+### Working with CLEA data
+  # Note, we only have about 80% of the results because of a mistake in the code
+# Understanding the results
+# first clean
+# how many main/minor candidates? # 30% main, 70% minor
+total_main <- sum(CLEA_cleaned$cvs1 > 0.1, na.rm = TRUE)
+total_minor <- sum(CLEA_cleaned$cvs1 < 0.1, na.rm = TRUE)
+total <- sum(CLEA_cleaned$cvs1 > 0, na.rm = TRUE)
+
+# is this dataset representative? 
+# first, which elections are covered
+unique_elections_pairs <- candidate_pairs_CLEA %>%
+  dplyr::select(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  distinct()
+
+unique_elections_CLEA <- CLEA_cleaned %>%
+  dplyr::select(ctr, yr, mn, cst_n, id) %>%
+  distinct()
+
+elections_in_pairs <- unique_elections_pairs %>%
+  rename(
+    ctr = Country_Code,
+    yr = Year,
+    mn = Election_Month,
+    cst_n = Constituency_Name,
+    id = Election_ID
+  )
+
+CLEA_cleaned_fr <- CLEA_cleaned %>%
+  semi_join(elections_in_pairs, by = c("ctr", "yr", "mn", "cst_n", "id"))
+
+# remove with invalid election id
+CLEA_cleaned_fr <- CLEA_cleaned_fr %>%
+  filter(id != -999)
+
+candidate_pairs_CLEA <- candidate_pairs_CLEA %>%
+  filter(Election_ID != -999)
+
+### remove india
+CLEA_cleaned_fr_no_ind <- CLEA_cleaned_fr %>%
+  filter(ctr != 356)
+
+candidate_pairs_CLEA_no_ind <- candidate_pairs_CLEA %>%
+  filter(Country_Code != 356)
+
+# plots of summary stats using yr, rg, ctr
+# count elections by region and year and create heatmap of regional and temporal coverage
+coverage_data <- CLEA_cleaned_fr_no_ind %>%
+  group_by(rg, yr) %>%
+  dplyr::summarize(election_count = n_distinct(ctr, yr, mn, cst_n, id)) %>%
+  ungroup()
+
+ggplot(coverage_data, aes(x = yr, y = rg, fill = election_count)) +
+  geom_tile() +
+  scale_fill_viridis_c(name = "Election Count") +
+  theme_minimal() +
+  labs(title = "Election Coverage by Region and Year",
+       x = "Year", y = "Region") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/CLEA_coverage.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+# categorize candidates as main or minor
+CLEA_cleaned_fr_no_ind <- CLEA_cleaned_fr_no_ind %>%
+  mutate(candidate_type = ifelse(cvs1 > 0.1, "main", "minor"))
+
+# boxplot of main/minor across regions
+ggplot(CLEA_cleaned_fr_no_ind, aes(x = rg, y = cvs1, fill = candidate_type)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = "Distribution of Vote Shares by Region",
+       x = "Region", y = "Vote Share (%)",
+       fill = "Candidate Type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/CLEA_main_minor_rates.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+# voteshare distribution across countries
+# calculate total vote share by candidate type per year
+voteshare <- CLEA_cleaned_fr_no_ind %>%
+  group_by(yr, candidate_type) %>%
+  dplyr::summarize(total_voteshare = sum(cvs1, na.rm = TRUE)) %>%
+  ungroup()
+
+# area chart
+ggplot(voteshare, aes(x = yr, y = total_voteshare, fill = candidate_type)) +
+  geom_area() +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal() +
+  labs(title = "Distribution of Vote Share Between Main and Minor Candidates",
+       x = "Year", y = "Total Vote Share",
+       fill = "Candidate Type")
+
+ggsave(
+  filename = "110425 meeting plots/CLEA_voteshare_main_minor.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+### False positive stuff
+### making is_decoy
+# thresholds
+lv_99th <- quantile(candidate_pairs_CLEA_no_ind$Levenshtein_Similarity, 0.99, na.rm = TRUE)
+jw_99th <- quantile(candidate_pairs_CLEA_no_ind$Jaro_Winkler_Similarity, 0.99, na.rm = TRUE)
+mp_99th <- quantile(candidate_pairs_CLEA_no_ind$Metaphone_Similarity, 0.99, na.rm = TRUE)
+mas_99th <- quantile(candidate_pairs_CLEA_no_ind$Masala_Similarity, 0.99, na.rm = TRUE)
+ng_99th <- quantile(candidate_pairs_CLEA_no_ind$NGram_Similarity, 0.99, na.rm = TRUE)
+
+lv_95th <- quantile(candidate_pairs_CLEA_no_ind$Levenshtein_Similarity, 0.95, na.rm = TRUE)
+jw_95th <- quantile(candidate_pairs_CLEA_no_ind$Jaro_Winkler_Similarity, 0.95, na.rm = TRUE)
+mp_95th <- quantile(candidate_pairs_CLEA_no_ind$Metaphone_Similarity, 0.95, na.rm = TRUE)
+mas_95th <- quantile(candidate_pairs_CLEA_no_ind$Masala_Similarity, 0.95, na.rm = TRUE)
+ng_95th <- quantile(candidate_pairs_CLEA_no_ind$NGram_Similarity, 0.95, na.rm = TRUE)
+
+candidate_pairs_CLEA_no_ind <- candidate_pairs_CLEA_no_ind %>%
+  mutate(is_decoy = ifelse(
+    Levenshtein_Similarity >= lv_99th & 
+      Jaro_Winkler_Similarity >= jw_99th & 
+      Metaphone_Similarity >= mp_99th & 
+      Masala_Similarity >= mas_99th & 
+      NGram_Similarity >= ng_99th,
+    TRUE, 
+    FALSE
+  ))
+
+### how are main_main, main_minor and minor_minor different? false positives? 
+candidate_pairs_CLEA_main_minor <- candidate_pairs_CLEA_no_ind %>%
+  filter(Pair_Type == "main-minor" | Pair_Type == "minor-main", 
+         is_decoy == TRUE)
+
+candidate_pairs_CLEA_main_main <- candidate_pairs_CLEA_no_ind %>%
+  filter(Pair_Type == "main-main", 
+         is_decoy == TRUE)
+
+candidate_pairs_CLEA_minor_minor <- candidate_pairs_CLEA_no_ind %>%
+  filter(Pair_Type == "minor-minor", 
+         is_decoy == TRUE)
+
+minor_candidates_that_are_decoys_of_minor <- unique(
+  candidate_pairs_CLEA_minor_minor %>%
+    dplyr::select(Candidate1_Name, Candidate1_Party_Name, Candidate2_Name, Candidate2_Party_Name, Election_ID) %>%
+    pivot_longer(cols = c(Candidate1_Name, Candidate2_Name),
+                 names_to = "position",
+                 values_to = "candidate_name") %>%
+    # Extract party code based on position
+    mutate(party_code = ifelse(position == "Candidate1_Name", Candidate1_Party_Name, Candidate2_Party_Name)) %>%
+    dplyr::select(candidate_name, party_code, Election_ID)
+)
+
+# minor minor candidates who are decoys in main-minor pairs
+minor_candidates_that_are_decoys_of_main <- bind_rows(
+  candidate_pairs_CLEA_main_minor %>% 
+    filter(Pair_Type == "minor-main") %>% 
+    dplyr::select(Candidate1_Name, Candidate1_Party_Name, Election_ID) %>%
+    rename(candidate_name = Candidate1_Name, party_code = Candidate1_Party_Name),
+  
+  candidate_pairs_CLEA_main_minor %>% 
+    filter(Pair_Type == "main-minor") %>% 
+    dplyr::select(Candidate2_Name, Candidate2_Party_Name, Election_ID) %>%
+    rename(candidate_name = Candidate2_Name, party_code = Candidate2_Party_Name)
+)
+
+overlap_candidates <- inner_join(
+  minor_candidates_that_are_decoys_of_minor,
+  minor_candidates_that_are_decoys_of_main,
+  by = c("candidate_name", "party_code", "Election_ID")
+)
+
+# count elections with main-minor decoys
+elections_with_main_minor_decoys <- candidate_pairs_CLEA_no_ind %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# count elections with main-main decoys
+elections_with_main_main_decoys <- candidate_pairs_CLEA_no_ind %>%
+  filter(Pair_Type == "main-main" & is_decoy == TRUE) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# count elections with minor-minor decoys, excluding the overlaps
+elections_with_minor_minor_decoys <- candidate_pairs_CLEA_no_ind %>%
+  filter(Pair_Type == "minor-minor" & is_decoy == TRUE) %>%
+  # Modified to create keys with party codes
+  mutate(
+    key1 = paste(Candidate1_Name, Candidate1_Party_Code, Election_ID),
+    key2 = paste(Candidate2_Name, Candidate2_Party_Code, Election_ID)
+  ) %>%
+  # Modified to match with new keys
+  filter(!(key1 %in% paste(overlap_candidates$candidate_name, overlap_candidates$party_code, overlap_candidates$Election_ID) | 
+             key2 %in% paste(overlap_candidates$candidate_name, overlap_candidates$party_code, overlap_candidates$Election_ID))) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# get total number of elections
+total_elections <- candidate_pairs_CLEA_no_ind %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# create final df
+elections_with_decoys_df <- data.frame(
+  Consolidated_Pair_Type = c("main-minor/minor-main", "main-main", "minor-minor"),
+  pct_elections_with_decoys = c(
+    elections_with_main_minor_decoys / total_elections * 100,
+    elections_with_main_main_decoys / total_elections * 100,
+    elections_with_minor_minor_decoys / total_elections * 100
+  )
+)
+
+# a key for easy matching
+minor_candidates_that_are_decoys_of_main$key <- paste(
+  minor_candidates_that_are_decoys_of_main$candidate_name,
+  minor_candidates_that_are_decoys_of_main$party_code,
+  minor_candidates_that_are_decoys_of_main$Election_ID
+)
+
+
+decoy_by_pair_type <- candidate_pairs_CLEA_no_ind %>%
+  # No changes in this part
+  mutate(
+    Consolidated_Pair_Type = case_when(
+      Pair_Type == "main-minor" ~ "main-minor/minor-main",
+      Pair_Type == "minor-main" ~ "main-minor/minor-main",
+      TRUE ~ Pair_Type
+    ),
+    # Modified to include party codes in keys
+    key1 = paste(Candidate1_Name, Candidate1_Party_Code, Election_ID),
+    key2 = paste(Candidate2_Name, Candidate2_Party_Code, Election_ID)
+  ) %>%
+  # Modified filter to use new key structure
+  filter(!(Consolidated_Pair_Type == "minor-minor" & 
+             (key1 %in% minor_candidates_that_are_decoys_of_main$key | 
+                key2 %in% minor_candidates_that_are_decoys_of_main$key))) %>%
+  # No changes needed in these parts
+  group_by(Consolidated_Pair_Type) %>%
+  dplyr::summarize(
+    total_pairs = n(),
+    decoy_pairs = sum(is_decoy, na.rm = TRUE),
+    pct_decoy = round(decoy_pairs / total_pairs * 100, 2),
+    .groups = "drop"
+  )
+
+plot_data <- bind_rows(
+  decoy_by_pair_type %>% 
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys"),
+  
+  elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys")
+)
+
+ggplot(plot_data, aes(x = Consolidated_Pair_Type, y = percentage, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f%%", percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, max(plot_data$percentage) * 1.1)) +
+  labs(title = "Decoy Pairs by Pair Type",
+       x = "Pair Type",
+       y = "Percentage",
+       fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/Decoy_pairs_by_type_CLEA.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+### Applying Martin's Suggestion to these as well
+baseline_false_positive_rate <- mean(c(
+  decoy_by_pair_type %>% 
+    filter(Consolidated_Pair_Type == "main-main") %>% 
+    pull(pct_decoy),
+  decoy_by_pair_type %>% 
+    filter(Consolidated_Pair_Type == "minor-minor") %>% 
+    pull(pct_decoy)
+))
+
+# alternative baseline fp rate
+baseline_false_positive_rate_2 <- 
+  decoy_by_pair_type %>% 
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+  pull(pct_decoy) * 
+  (mean(
+    (decoy_by_pair_type %>% 
+       filter(Consolidated_Pair_Type == "main-main") %>% 
+       pull(pct_decoy))/
+      decoy_by_pair_type %>% 
+      filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+      pull(pct_decoy), 
+    (decoy_by_pair_type %>% 
+       filter(Consolidated_Pair_Type == "minor-minor") %>% 
+       pull(pct_decoy))/
+      decoy_by_pair_type %>% 
+      filter(Consolidated_Pair_Type == "main-minor/minor-main") %>% 
+      pull(pct_decoy))
+  )
+
+# how many main-minor/minor-main decoy pairs to keep
+# first get the total number of main-minor/minor-main pairs
+main_minor_total_pairs <- decoy_by_pair_type %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>%
+  pull(total_pairs)
+
+# how many decoy pairs should remain to match the baseline rate
+main_minor_decoys_to_keep <- round(main_minor_total_pairs * baseline_false_positive_rate / 100)
+
+# get the current number of decoy pairs
+main_minor_current_decoys <- decoy_by_pair_type %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main") %>%
+  pull(decoy_pairs)
+
+# calculate how many to remove
+main_minor_decoys_to_remove <- main_minor_current_decoys - main_minor_decoys_to_keep
+
+# create a modified version of candidate_pairs with randomly removed decoys
+set.seed(123)
+
+# get indices of main-minor/minor-main decoy pairs to keep
+main_minor_decoy_pairs <- candidate_pairs_CLEA_no_ind %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE)
+
+decoys_to_remove <- main_minor_decoy_pairs %>%
+  sample_n(main_minor_decoys_to_remove)
+
+# create adjusted candidate_pairs dataset
+adjusted_candidate_pairs <- candidate_pairs_CLEA_no_ind %>%
+  anti_join(decoys_to_remove, by = c("Candidate1_Name", "Candidate2_Name", "Year", "Country_Code", 
+                                     "Constituency_Name", "Election_ID", "Election_Month"))
+
+# now, recalculate everything
+
+# recreate elections with decoys calculations
+adjusted_elections_with_main_minor_decoys <- adjusted_candidate_pairs %>%
+  filter((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy == TRUE) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+adjusted_elections_with_main_main_decoys <- adjusted_candidate_pairs %>%
+  filter(Pair_Type == "main-main" & is_decoy == TRUE) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# recalculate minor candidates that are decoys of main
+adjusted_minor_candidates_that_are_decoys_of_main <- unique(c(
+  adjusted_candidate_pairs %>% 
+    filter(Pair_Type == "minor-main") %>% 
+    dplyr::select(Candidate1_Name, Candidate1_Party_Name, Election_ID) %>%
+    rename(candidate_name = Candidate1_Name, party_code = Candidate1_Party_Name),
+  adjusted_candidate_pairs %>% 
+    filter(Pair_Type == "main-minor") %>% 
+    dplyr::select(Candidate2_Name, Candidate2_Party_Name, Election_ID) %>%
+    rename(candidate_name = Candidate2_Name, party_code = Candidate2_Party_Name)
+))
+
+adjusted_elections_with_minor_minor_decoys <- adjusted_candidate_pairs %>%
+  filter(Pair_Type == "minor-minor" & is_decoy == TRUE) %>%
+  # Modified to create keys with party codes
+  mutate(
+    key1 = paste(Candidate1_Name, Candidate1_Party_Code, Election_ID),
+    key2 = paste(Candidate2_Name, Candidate2_Party_Code, Election_ID)
+  ) %>%
+  # Modified to match with new keys
+  filter(!(key1 %in% paste(overlap_candidates$candidate_name, overlap_candidates$party_code, overlap_candidates$Election_ID) | 
+             key2 %in% paste(overlap_candidates$candidate_name, overlap_candidates$party_code, overlap_candidates$Election_ID))) %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# get total elections
+total_elections <- adjusted_candidate_pairs %>%
+  distinct(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  nrow()
+
+# create new data frames for plotting
+adjusted_elections_with_decoys_df <- data.frame(
+  Consolidated_Pair_Type = c("main-minor/minor-main", "main-main", "minor-minor"),
+  pct_elections_with_decoys = c(
+    adjusted_elections_with_main_minor_decoys / total_elections * 100,
+    adjusted_elections_with_main_main_decoys / total_elections * 100,
+    adjusted_elections_with_minor_minor_decoys / total_elections * 100
+  )
+)
+
+# recalculate decoy by pair type
+adjusted_decoy_by_pair_type <- adjusted_candidate_pairs %>%
+  mutate(
+    Consolidated_Pair_Type = case_when(
+      Pair_Type == "main-minor" ~ "main-minor/minor-main",
+      Pair_Type == "minor-main" ~ "main-minor/minor-main",
+      TRUE ~ Pair_Type
+    ),
+    # Modified to include party codes in keys
+    key1 = paste(Candidate1_Name, Candidate1_Party_Code, Election_ID),
+    key2 = paste(Candidate2_Name, Candidate2_Party_Code, Election_ID)
+  ) %>%
+  # Modified filter to use new key structure
+  filter(!(Consolidated_Pair_Type == "minor-minor" & 
+             (key1 %in% adjusted_minor_candidates_that_are_decoys_of_main$key | 
+                key2 %in% adjusted_minor_candidates_that_are_decoys_of_main$key))) %>%
+  # No changes needed in these parts
+  group_by(Consolidated_Pair_Type) %>%
+  dplyr::summarize(
+    total_pairs = n(),
+    decoy_pairs = sum(is_decoy, na.rm = TRUE),
+    pct_decoy = round(decoy_pairs / total_pairs * 100, 2),
+    .groups = "drop"
+  )
+
+# combine for plotting
+adjusted_plot_data <- bind_rows(
+  adjusted_decoy_by_pair_type %>% 
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys",
+           adjusted = TRUE),
+  
+  adjusted_elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys",
+           adjusted = TRUE), 
+  
+  decoy_by_pair_type %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
+    mutate(metric = "% of Pairs that are Decoys",
+           adjusted = FALSE), 
+  
+  elections_with_decoys_df %>%
+    dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
+    mutate(metric = "% of Elections with Decoys",
+           adjusted = FALSE)
+)
+
+# we just need the main-minor bars 
+adjusted_adjusted_plot_data <- adjusted_plot_data %>%
+  filter(Consolidated_Pair_Type == "main-minor/minor-main")
+
+adjusted_adjusted_plot_data$adjusted <- factor(adjusted_adjusted_plot_data$adjusted, 
+                                               levels = c(FALSE, TRUE), 
+                                               labels = c("Not Adjusted", "Adjusted"))
+
+# plot
+ggplot(adjusted_adjusted_plot_data, aes(x = adjusted, y = percentage, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.2f%%", percentage)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = function(x) paste0(x, "%"), 
+                     limits = c(0, max(adjusted_plot_data$percentage) * 1.1)) +
+  labs(title = "Decoy Pairs by Pair Type (With Random Removal Adjustment)",
+       subtitle = paste0("Baseline false positive rate: ", round(baseline_false_positive_rate, 2), "%"),
+       x = "Pair Type",
+       y = "Percentage",
+       fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "110425 meeting plots/Decoy_pairs_by_type_random_removal_CLEA.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+### summaries at election level
+election_decoys <- candidate_pairs_CLEA_no_ind %>%
+  group_by(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
   summarise(
     main_main_decoys = sum(Pair_Type == "main-main" & is_decoy, na.rm = TRUE),
     main_minor_decoys = sum((Pair_Type == "main-minor" | Pair_Type == "minor-main") & is_decoy, na.rm = TRUE),
@@ -1130,7 +1821,7 @@ sum(election_decoys$main_minor_decoys > 0)/nrow(election_decoys)
 sum(election_decoys$main_main_decoys > 0)/nrow(election_decoys)
 sum(election_decoys$minor_minor_decoys > 0)/nrow(election_decoys)
 
-sum(candidate_pairs$is_decoy)/nrow(candidate_pairs)
+sum(candidate_pairs_CLEA_no_ind$is_decoy)/nrow(candidate_pairs_CLEA_no_ind)
 
 thresholds <- 1:10
 
@@ -1167,7 +1858,7 @@ ggplot(threshold_counts, aes(x = factor(threshold), y = percentage)) +
   theme_minimal()
 
 ggsave(
-  filename = "110425 meeting plots/Main_Minor_Decoy_Histogram.png",
+  filename = "110425 meeting plots/Main_Minor_Decoy_Histogram_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1176,91 +1867,95 @@ ggsave(
   bg = "white"
 )
 
-constituency_metrics <- candidate_pairs %>%
-  group_by(State_Name, Year, Constituency_Name, Election_Type, Assembly_No) %>%
+# creating no. of candidates per election df from CLEA_cleaned_fr_no_ind
+constituency_candidates <- CLEA_cleaned_fr_no_ind %>%
+  group_by(ctr, yr, mn, cst_n, id) %>%
   dplyr::summarize(
-    # basic constituency metrics
-    total_candidates = max(Candidate1_N_Cand, na.rm = TRUE),
-    decoy_candidates = sum((is_decoy & Pair_Type == "main-minor") | 
-                             (is_decoy & Pair_Type == "minor-main"), na.rm = TRUE),
-    decoy_share = round(sum((is_decoy & Pair_Type == "main-minor") | 
-                              (is_decoy & Pair_Type == "minor-main"), na.rm = TRUE) /
-                          max(Candidate1_N_Cand, na.rm = TRUE) * 100, 2),
+    total_candidates = n(),
+    .groups = "drop"
+  ) %>%
+  # rename columns to match candidate_pairs_CLEA
+  rename(
+    Country_Code = ctr,
+    Year = yr,
+    Election_Month = mn,
+    Constituency_Name = cst_n,
+    Election_ID = id
+  )
+
+constituency_metrics <- candidate_pairs_CLEA_no_ind %>%
+  # create helper columns to identify winners and runner-ups
+  group_by(Country_Code, Year, Election_Month, Constituency_Name, Election_ID) %>%
+  mutate(
+    # create candidate rankings based on voteshare
+    Candidate1_Rank = rank(-Candidate1_VoteShare, ties.method = "min"),
+    Candidate2_Rank = rank(-Candidate2_VoteShare, ties.method = "min")
+  ) %>%
+  dplyr::summarize(
+    # for decoy metrics
+    decoy_candidates = sum((is_decoy & (Pair_Type == "main-minor" | Pair_Type == "minor-main")), na.rm = TRUE),
     
-    # vote metrics
-    total_votes = max(Candidate1_Valid_Votes, na.rm = TRUE),
-    
-    # count votes to decoys - adjusted to use is_decoy
-    total_votes_to_decoys = sum(
-      ifelse(is_decoy & Pair_Type == "main-minor", Candidate2_Votes, 
-             ifelse(is_decoy & Pair_Type == "minor-main", Candidate1_Votes, 0)), 
-      na.rm = TRUE),
+    # vote shares for decoys
     decoy_vote_share = round(
-      sum(ifelse(is_decoy & Pair_Type == "main-minor", Candidate2_Votes, 
-                 ifelse(is_decoy & Pair_Type == "minor-main", Candidate1_Votes, 0)), 
-          na.rm = TRUE) / max(Candidate1_Valid_Votes, na.rm = TRUE) * 100, 2),
+      sum(ifelse(is_decoy & Pair_Type == "main-minor", Candidate2_VoteShare, 
+                 ifelse(is_decoy & Pair_Type == "minor-main", Candidate1_VoteShare, 0)), 
+          na.rm = TRUE), 2),
     
-    # winner and runner-up metrics
-    winning_margin = min(Candidate1_Margin[Candidate1_Position == 1], na.rm = TRUE),
-    winning_margin_percentage = min(Candidate1_Margin_Percentage[Candidate1_Position == 1], na.rm = TRUE),
-    winner_party = first(Candidate1_Party[Candidate1_Position == 1]),
-    runner_up_party = first(Candidate1_Party[Candidate1_Position == 2]),
-    winner_vote_share = max(Candidate1_Vote_Share_Percentage[Candidate1_Position == 1], na.rm = TRUE),
-    runner_up_vote_share = max(Candidate1_Vote_Share_Percentage[Candidate1_Position == 2], na.rm = TRUE),
+    # find winner and runner-up info
+    winner_vote_share = max(c(Candidate1_VoteShare, Candidate2_VoteShare), na.rm = TRUE),
+    winner_party = first(ifelse(Candidate1_VoteShare == max(c(Candidate1_VoteShare, Candidate2_VoteShare), na.rm = TRUE), 
+                                Candidate1_Party_Name, Candidate2_Party_Name)),
     
-    # check for decoys associated with winner/runner-up - using is_decoy
-    winner_has_decoys = any((is_decoy & Pair_Type == "main-minor" & Candidate1_Position == 1) | 
-                              (is_decoy & Pair_Type == "minor-main" & Candidate2_Position == 1), 
-                            na.rm = TRUE),
-    runner_up_has_decoys = any((is_decoy & Pair_Type == "main-minor" & Candidate1_Position == 2) | 
-                                 (is_decoy & Pair_Type == "minor-main" & Candidate2_Position == 2), 
-                               na.rm = TRUE),
+    # for runner-up, we need to find the second highest vote share
+    all_vote_shares = list(c(Candidate1_VoteShare, Candidate2_VoteShare)),
     
-    # education metrics
-    education = mean(c(Candidate1_MyNeta_education_numeric,
-                       Candidate2_MyNeta_education_numeric), na.rm = TRUE),
-    
-    # educ & party for decoys - using is_decoy
-    decoy_education = mean(
-      c(Candidate2_MyNeta_education_numeric[is_decoy & Pair_Type == "main-minor"],
-        Candidate1_MyNeta_education_numeric[is_decoy & Pair_Type == "minor-main"]),
-      na.rm = TRUE),
-    decoy_party = mean(
-      c(Candidate2_Party_type_numeric[is_decoy & Pair_Type == "main-minor"],
-        Candidate1_Party_type_numeric[is_decoy & Pair_Type == "minor-main"]),
+    # check if winner has decoys
+    winner_has_decoys = any(
+      (is_decoy & Pair_Type == "main-minor" & Candidate1_Rank == 1) | 
+        (is_decoy & Pair_Type == "minor-main" & Candidate2_Rank == 1), 
       na.rm = TRUE),
     
-    # educ & party for main with decoys - using is_decoy
-    main_with_decoy_education = mean(
-      c(Candidate1_MyNeta_education_numeric[is_decoy & Pair_Type == "main-minor"],
-        Candidate2_MyNeta_education_numeric[is_decoy & Pair_Type == "minor-main"]),
-      na.rm = TRUE),
-    main_with_decoy_party = mean(
-      c(Candidate1_Party_type_numeric[is_decoy & Pair_Type == "main-minor"],
-        Candidate2_Party_type_numeric[is_decoy & Pair_Type == "minor-main"]),
-      na.rm = TRUE),
-    
-    # educ & party for main without decoys
-    main_without_decoy_education = mean(
-      c(Candidate1_MyNeta_education_numeric[!is_decoy & (Pair_Type == "main-minor" | Pair_Type == "main-main")],
-        Candidate2_MyNeta_education_numeric[!is_decoy & (Pair_Type == "minor-main" | Pair_Type == "main-main")]),
-      na.rm = TRUE),
-    main_without_decoy_party = mean(
-      c(Candidate1_Party_type_numeric[!is_decoy & (Pair_Type == "main-minor" | Pair_Type == "main-main")],
-        Candidate2_Party_type_numeric[!is_decoy & (Pair_Type == "minor-main" | Pair_Type == "main-main")]),
+    # check if runner-up has decoys
+    runner_up_has_decoys = any(
+      (is_decoy & Pair_Type == "main-minor" & Candidate1_Rank == 2) | 
+        (is_decoy & Pair_Type == "minor-main" & Candidate2_Rank == 2), 
       na.rm = TRUE),
     
     .groups = "drop"
   ) %>%
+  # join with constituency_candidates to get total_candidates
+  left_join(constituency_candidates, 
+            by = c("Country_Code", "Year", "Election_Month", "Constituency_Name", "Election_ID")) %>%
+  # now we need to find runner-up vote share
   mutate(
+    # add derived metrics
+    decoy_share = round(decoy_candidates / total_candidates * 100, 2)
+  ) %>%
+  # process the all_vote_shares to get runner-up
+  rowwise() %>%
+  mutate(
+    # sort vote shares and get the second highest
+    sorted_shares = list(sort(unlist(all_vote_shares), decreasing = TRUE)),
+    runner_up_vote_share = ifelse(length(sorted_shares) >= 2, sorted_shares[2], NA),
+    # calculate winning margin
+    winning_margin = winner_vote_share - runner_up_vote_share,
+    winning_margin_percentage = winning_margin,
+    # derived metrics
     close_race = ifelse(winning_margin_percentage < 5, TRUE, FALSE),
     decoy_impact_potential = ifelse(decoy_vote_share > winning_margin_percentage, TRUE, FALSE)
   ) %>%
-  # sort by state, year and constituency
-  arrange(State_Name, Year, Constituency_Name, Election_Type, Assembly_No)
+  # clean up intermediate columns
+  dplyr::select(-all_vote_shares, -sorted_shares) %>%
+  # sort by the required order
+  arrange(Country_Code, Constituency_Name, Year, Election_Month, Election_ID)
 
-state_metrics <- constituency_metrics %>%
-  group_by(State_Name) %>%
+country_metrics <- constituency_metrics %>%
+  group_by(Country_Code) %>%
+  mutate(
+    total_votes_to_decoys = sum(decoy_vote_share, na.rm = TRUE),
+    total_votes = sum(winner_vote_share + runner_up_vote_share, na.rm = TRUE)
+  ) %>%
+  # Now calculate country-level metrics
   dplyr::summarize(
     # how many constituencies
     constituency_count = n(),
@@ -1278,8 +1973,8 @@ state_metrics <- constituency_metrics %>%
     max_decoy_share = max(decoy_share, na.rm = TRUE),
     
     # voteshare stuff
-    total_votes = sum(total_votes, na.rm = TRUE),
-    total_votes_to_decoys = sum(total_votes_to_decoys, na.rm = TRUE),
+    total_votes_to_decoys = sum(decoy_vote_share, na.rm = TRUE),
+    total_votes = sum(winner_vote_share + runner_up_vote_share, na.rm = TRUE),
     overall_decoy_vote_share = (total_votes_to_decoys / total_votes) * 100,
     
     # decoys affect outcomes?
@@ -1294,32 +1989,35 @@ state_metrics <- constituency_metrics %>%
     pct_close_races = (close_races / constituency_count) * 100,
     pct_decoy_impact = (decoy_impact_races / constituency_count) * 100,
     
-    # education and party
-    decoy_education = mean(decoy_education, na.rm = TRUE),
-    decoy_party = mean(decoy_party, na.rm = TRUE),
-    main_with_decoy_education = mean(main_with_decoy_education, na.rm = TRUE),
-    main_with_decoy_party = mean(main_with_decoy_party, na.rm = TRUE),
-    main_without_decoy_education = mean(main_without_decoy_education, na.rm = TRUE),
-    main_without_decoy_party = mean(main_without_decoy_party, na.rm = TRUE),
-    
     decoy_effectiveness = (overall_decoy_vote_share * decoy_impact_races) / constituency_count,
     .groups = "drop"
   )
 
-# how many decoy elections, statewise
-ggplot(state_metrics, aes(x = reorder(State_Name, -pct_races_with_decoys), y = pct_races_with_decoys)) +
+country_codes <- CLEA_cleaned_fr_no_ind %>%
+  dplyr::select(ctr, ctr_n) %>%
+  distinct() %>%
+  rename(Country_Code = ctr, Country = ctr_n)
+
+country_metrics <- country_metrics %>%
+  left_join(country_codes, by = "Country_Code")
+
+# how many decoy elections, country
+# limit to country with more than 10 constituencies i.e.
+country_metrics_1 <- country_metrics %>%
+  filter(constituency_count > 10)
+
+ggplot(country_metrics_1, aes(x = reorder(Country, -pct_races_with_decoys), y = pct_races_with_decoys)) +
   geom_bar(stat = "identity", fill = "skyblue") +
-  geom_text(data = state_metrics %>% filter(pct_races_with_decoys > 0),
-            aes(label = sprintf("%.1f%%", pct_races_with_decoys)), 
+  geom_text(aes(label = sprintf("%.1f%%", pct_races_with_decoys)), 
             vjust = -0.5, size = 3) +
-  labs(title = "Percentage of Elections with Decoys by State",
-       x = "State",
+  labs(title = "Percentage of Elections with Decoys by Country",
+       x = "Country",
        y = "Percentage of Elections with Decoys (%)") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(
-  filename = "110425 meeting plots/Decoy_elections_state_histogram.png",
+  filename = "110425 meeting plots/Decoy_elections_state_histogram_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1328,19 +2026,18 @@ ggsave(
   bg = "white"
 )
 
-ggplot(state_metrics, aes(x = reorder(State_Name, -pct_races_with_3_decoys), y = pct_races_with_3_decoys)) +
+ggplot(country_metrics_1, aes(x = reorder(Country, -pct_races_with_3_decoys), y = pct_races_with_3_decoys)) +
   geom_bar(stat = "identity", fill = "skyblue") +
-  geom_text(data = state_metrics %>% filter(pct_races_with_3_decoys > 0),
-            aes(label = sprintf("%.2f%%", pct_races_with_3_decoys)), 
+  geom_text(aes(label = sprintf("%.1f%%", pct_races_with_3_decoys)), 
             vjust = -0.5, size = 3) +
-  labs(title = "Percentage of Elections with at least 3 Decoys by State",
-       x = "State",
+  labs(title = "Percentage of Elections with at least 3 Decoys by Country",
+       x = "Country",
        y = "Percentage of Elections with at least 3 Decoys (%)") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(
-  filename = "110425 meeting plots/Decoy_elections_atleast3_state_histogram.png",
+  filename = "110425 meeting plots/Decoy_elections_atleast3_state_histogram_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1349,99 +2046,19 @@ ggsave(
   bg = "white"
 )
 
-### whats up with chhattisgarh and tamil nadu? 
-chhattisgarh_constituency_metrics <- constituency_metrics %>%
-  filter(State_Name == "Chhattisgarh")
-
-tamil_nadu_constituency_metrics <- constituency_metrics %>%
-  filter(State_Name == "Tamil_Nadu")
-
-lakshwadeep_constituency_metrics <- constituency_metrics %>%
-  filter(State_Name == "Lakshadweep")
-
-haryana_constituency_metrics <- constituency_metrics %>%
-  filter(State_Name == "Haryana")
-
-punjab_constituency_metrics <- constituency_metrics %>%
-  filter(State_Name == "Punjab")
-
-### example decoy elections
-mahasamund_CT_2014_GE <- candidate_pairs %>%
-  filter(Year == "2014" & State_Name == "Chhattisgarh" & Constituency_Name == "MAHASAMUND" & Election_Type == "Lok Sabha Election (GE)")
-
-kurud_CT_2008_AE <- candidate_pairs %>%
-  filter(Year == "2008" & State_Name == "Chhattisgarh" & Constituency_Name == "KURUD" & Election_Type == "State Assembly Election (AE)")
-
-panamarathupatty_TN_2006_AE <- candidate_pairs %>%
-  filter(Year == "2006" & State_Name == "Tamil_Nadu" & Constituency_Name == "PANAMARATHUPATTY" & Election_Type == "State Assembly Election (AE)")
-
-villupuram_TN_2016_AE <- candidate_pairs %>%
-  filter(Year == "2016" & State_Name == "Tamil_Nadu" & Constituency_Name == "VILLUPURAM" & Election_Type == "State Assembly Election (AE)")
-
-dharmapuri_TN_2006_AE <- candidate_pairs %>%
-  filter(Year == "2006" & State_Name == "Tamil_Nadu" & Constituency_Name == "DHARMAPURI" & Election_Type == "State Assembly Election (AE)")
-
-adampur_HN_2008_AE <- candidate_pairs %>%
-  filter(Year == "2008" & State_Name == "Haryana" & Constituency_Name == "ADAMPUR" & Election_Type == "State Assembly Election (AE)")
-
-bhiwana_HN_1996_AE <- candidate_pairs %>%
-  filter(Year == "1996" & State_Name == "Haryana" & Constituency_Name == "BHIWANI" & Election_Type == "State Assembly Election (AE)")
-
-zira_PN_2017_AE <- candidate_pairs %>%
-  filter(Year == "2017" & State_Name == "Punjab" & Constituency_Name == "ZIRA" & Election_Type == "State Assembly Election (AE)")
-
-rampuraphul_PN_2022_AE <- candidate_pairs %>%
-  filter(Year == "2022" & State_Name == "Punjab" & Constituency_Name == "RAMPURA PHUL" & Election_Type == "State Assembly Election (AE)")
-
-westdelhi_DL_2014_GE <- candidate_pairs %>%
-  filter(Year == "2014" & State_Name == "Delhi" & Constituency_Name == "WEST DELHI" & Election_Type == "Lok Sabha Election (GE)")
-
-holenarasipur_KN_2023_AE <- candidate_pairs %>%
-  filter(Year == "2023" & State_Name == "Karnataka" & Constituency_Name == "HOLENARASIPUR" & Election_Type == "State Assembly Election (AE)")
-
-# export tables
-holenarasipur_KN_2023_AE %>% 
-  filter(is_decoy) %>%
-  filter(Pair_Type == "main-minor" | Pair_Type == "minor-main") %>%
-  dplyr::select(Candidate1_Name, Candidate1_Type, Candidate2_Name, Candidate2_Type, Levenshtein_Similarity, is_decoy) %>%
-  gt(groupname_col = "Pair_Type") %>%
-  # 3dp
-  fmt_number(
-    columns = c(Levenshtein_Similarity),
-    decimals = 3
-  ) %>%
-  data_color(
-    columns = Levenshtein_Similarity,
-    fn = col_numeric(
-      palette = c("pink", "yellow", "lightgreen"),
-      domain = c(lv_99th, 1)
-    )
-  ) %>%
-  tab_header(
-    title = "Holenarasipur 2023 Karnataka AE",
-  ) %>%
-  cols_label(
-    Candidate1_Name = "Name 1",
-    Candidate2_Name = "Name 2",
-    Candidate1_Type = "Name 1 Type", 
-    Candidate2_Type = "Name 2 Type",
-    Levenshtein_Similarity = "Levenshtein"
-  )
-
-# state level
-state_metrics %>%
-  mutate(State_Name = fct_reorder(State_Name, -mean_decoy_share)) %>%
-  ggplot(aes(x = State_Name, y = mean_decoy_share)) +
+country_metrics_1 %>%
+  mutate(Country = fct_reorder(Country, -mean_decoy_share)) %>%
+  ggplot(aes(x = Country, y = mean_decoy_share)) +
   geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.8) +
   geom_errorbar(aes(ymin = median_decoy_share, ymax = p90_decoy_share), width = 0.2) +
   scale_y_continuous(
-    breaks = seq(0, 100, by = 2),
+    breaks = seq(0, 5, by = 0.2),
     labels = scales::percent_format(scale = 1)
   ) + 
   labs(
-    title = "Average Share of Decoy Candidates per Election by State",
+    title = "Average Share of Decoy Candidates per Election by Country",
     subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
+    x = "Country",
     y = "Proportion of Decoy Candidates"
   ) +
   theme_minimal() +
@@ -1452,15 +2069,25 @@ state_metrics %>%
     plot.subtitle = element_text(size = 9)
   )
 
-state_metrics %>%
-  mutate(State_Name = fct_reorder(State_Name, -mean_num_decoys)) %>%
-  ggplot(aes(x = State_Name, y = mean_num_decoys)) +
+ggsave(
+  filename = "110425 meeting plots/Decoy_candidate_country_CLEA.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
+
+country_metrics_1 %>%
+  mutate(Country = fct_reorder(Country, -mean_num_decoys)) %>%
+  ggplot(aes(x = Country, y = mean_num_decoys)) +
   geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
   geom_errorbar(aes(ymin = median_num_decoys, ymax = p90_num_decoys), width = 0.2) +
   labs(
-    title = "Average Number of Decoy Candidates per Election by State",
+    title = "Average Number of Decoy Candidates per Election by Country",
     subtitle = "With median (bottom of bar), 90th percentile (top of bar), and maximum (red dot)",
-    x = "State",
+    x = "Country",
     y = "Number of Decoy Candidates"
   ) +
   theme_minimal() +
@@ -1471,53 +2098,31 @@ state_metrics %>%
     plot.subtitle = element_text(size = 9)
   )
 
-state_metrics_long <- state_metrics %>%
-  dplyr::select(State_Name, 
-                `Average Number` = mean_num_decoys, 
-                `Maximum Number` = max_num_decoys,
-                `Average Share` = mean_decoy_share, 
-                `Maximum Share` = max_decoy_share,
-                constituency_count) %>%
-  pivot_longer(cols = c(`Average Number`, `Maximum Number`, `Average Share`, `Maximum Share`),
-               names_to = "Metric", values_to = "Value")
+ggsave(
+  filename = "110425 meeting plots/Decoy_candidates_number_country_CLEA.png",
+  plot = last_plot(),
+  width = 12,
+  height = 6,
+  dpi = 300,
+  device = "png", 
+  bg = "white"
+)
 
-# faceted
-state_metrics_long %>%
-  mutate(State_Name = fct_reorder(State_Name, 
-                                  -Value * (Metric == "Average Share"), 
-                                  .fun = mean, na.rm = TRUE)) %>%
-  ggplot(aes(x = State_Name, y = Value, fill = Metric)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
-  facet_wrap(~ Metric, scales = "free_y", ncol = 2) +
-  # geom_text(aes(label = round(Value, 3)), position = position_dodge(width = 0.9), 
-  #           vjust = -0.5, size = 2.5) +
-  scale_fill_brewer(palette = "Set1") +
-  labs(
-    title = "Decoy Candidates Metrics by State",
-    subtitle = "States ordered by average share of decoy candidates",
-    x = "State",
-    y = "Value"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
-    strip.background = element_rect(fill = "lightgray", color = NA),
-    strip.text = element_text(face = "bold"),
-    legend.position = "none",
-    panel.spacing = unit(1, "lines"),
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 9)
-  )
-
-state_year_metrics <- constituency_metrics %>%
-  group_by(State_Name, Year) %>%
+country_year_metrics <- constituency_metrics %>%
+  group_by(Country_Code, Year) %>%
   summarise(
     decoy_proportion = mean(decoy_candidates/total_candidates, na.rm = TRUE),
     decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
     .groups = "drop"
   )
 
-year_metrics <- state_year_metrics %>%
+country_year_metrics <- country_year_metrics %>%
+  left_join(country_codes, by = "Country_Code") %>%
+  mutate(
+    Year = as.numeric(Year)
+  )
+
+year_metrics <- country_year_metrics %>%
   group_by(Year) %>%
   dplyr::summarize(
     decoy_proportion = mean(decoy_proportion, na.rm = TRUE), 
@@ -1525,7 +2130,7 @@ year_metrics <- state_year_metrics %>%
     .groups = "drop"
   )
 
-year_metrics_binned <- state_year_metrics %>%
+year_metrics_binned <- country_year_metrics %>%
   mutate(
     Year_bin = 5 * floor(Year / 5)  # 5 year bins
   ) %>%
@@ -1536,24 +2141,6 @@ year_metrics_binned <- state_year_metrics %>%
     # store the range of years in each bin
     year_range = paste0(min(Year), "-", max(Year)),
     .groups = "drop"
-  )
-
-ggplot(year_metrics, aes(x = Year, y = decoy_proportion)) +
-  geom_line(color = "red") +
-  geom_point(color = "darkred") +
-  theme_minimal() +
-  labs(
-    title = "Avg Decoy Proportion Over Time",
-    x = "Election Year",
-    y = "Average Decoy Proportion"
-  ) +
-  scale_y_continuous(labels = scales::percent) +
-  scale_x_continuous(
-    breaks = seq(1950, 2025, by = 5)) + 
-  theme(
-    legend.position = "right",
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.title = element_text(face = "bold")
   )
 
 ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_proportion)) +
@@ -1567,7 +2154,7 @@ ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_proportion)) +
   ) +
   scale_y_continuous(labels = scales::percent) +
   scale_x_continuous(
-    breaks = seq(1950, 2025, by = 5)) + 
+    breaks = seq(1880, 2025, by = 5)) + 
   theme(
     legend.position = "right",
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -1575,7 +2162,7 @@ ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_proportion)) +
   )
 
 ggsave(
-  filename = "110425 meeting plots/Decoy_share_over_time.png",
+  filename = "110425 meeting plots/Decoy_share_over_time_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1583,24 +2170,6 @@ ggsave(
   device = "png", 
   bg = "white"
 )
-
-ggplot(year_metrics, aes(x = Year, y = decoy_vote_share)) +
-  geom_line(color = "red") +
-  geom_point(color = "darkred") +
-  theme_minimal() +
-  labs(
-    title = "Avg Decoy Vote Share Over Time",
-    x = "Election Year",
-    y = "Average Decoy Vote Share"
-  ) +
-  scale_y_continuous(labels = scales::percent) +
-  scale_x_continuous(
-    breaks = seq(1950, 2025, by = 5)) + 
-  theme(
-    legend.position = "right",
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.title = element_text(face = "bold")
-  )
 
 ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_vote_share)) +
   geom_line(color = "red") +
@@ -1613,7 +2182,7 @@ ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_vote_share)) +
   ) +
   scale_y_continuous(labels = scales::percent) +
   scale_x_continuous(
-    breaks = seq(1950, 2025, by = 5)) + 
+    breaks = seq(1880, 2025, by = 5)) + 
   theme(
     legend.position = "right",
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -1621,7 +2190,7 @@ ggplot(year_metrics_binned, aes(x = Year_bin, y = decoy_vote_share)) +
   )
 
 ggsave(
-  filename = "110425 meeting plots/Decoy_voteshare_over_time.png",
+  filename = "110425 meeting plots/Decoy_voteshare_over_time_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1630,17 +2199,17 @@ ggsave(
   bg = "white"
 )
 
-state_metrics %>%
+country_metrics_1 %>%
   # reorder
-  mutate(State_Name = fct_reorder(State_Name, overall_decoy_vote_share)) %>%
-  ggplot(aes(x = State_Name, y = overall_decoy_vote_share)) +
+  mutate(Country = fct_reorder(Country, overall_decoy_vote_share)) %>%
+  ggplot(aes(x = Country, y = overall_decoy_vote_share)) +
   geom_bar(stat = "identity", fill = "darkblue") +
   geom_text(aes(label = sprintf("%.2f%%", overall_decoy_vote_share)), 
             hjust = -0.1, size = 3) +
   coord_flip() +
   labs(
     title = "Votes Captured by Decoy Candidates",
-    subtitle = "Percentage of total votes going to decoy candidates by state",
+    subtitle = "Percentage of total votes going to decoy candidates by country",
     y = "Decoy Vote Share (%)",
     x = ""
   ) +
@@ -1648,7 +2217,7 @@ state_metrics %>%
   theme(plot.title = element_text(face = "bold"))
 
 ggsave(
-  filename = "110425 meeting plots/Decoy_voteshare_by_state.png",
+  filename = "110425 meeting plots/Decoy_voteshare_by_country_CLEA.png",
   plot = last_plot(),
   width = 12,
   height = 6,
@@ -1657,79 +2226,45 @@ ggsave(
   bg = "white"
 )
 
-state_metrics %>%
-  # reorder
-  mutate(State_Name = fct_reorder(State_Name, pct_decoy_impact)) %>%
-  ggplot(aes(x = State_Name, y = pct_decoy_impact)) +
-  geom_bar(stat = "identity", fill = "firebrick") +
-  geom_text(aes(label = sprintf("%.1f%%", pct_decoy_impact)), 
-            hjust = -0.1, size = 3) +
-  coord_flip() +
-  labs(
-    title = "Races Where Decoys Could Have Changed Outcomes",
-    subtitle = "Percentage of races where decoy votes exceeded winning margin",
-    y = "Percentage of Races (%)",
-    x = ""
-  ) +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"))
-
-state_metrics_for_viz <- state_metrics %>%
-  dplyr::select(State_Name, pct_close_races, pct_decoy_impact) %>%
-  tidyr::pivot_longer(
-    cols = c(pct_close_races, pct_decoy_impact),
-    names_to = "metric",
-    values_to = "percentage"
-  ) %>%
-  mutate(
-    metric = case_when(
-      metric == "pct_close_races" ~ "Close Races (<5% margin)",
-      metric == "pct_decoy_impact" ~ "Races Where Decoys Matter",
-      TRUE ~ metric
-    ),
-    State_Name = fct_reorder(State_Name, percentage, .fun = max)
-  )
-
-ggplot(state_metrics_for_viz, aes(x = State_Name, y = percentage, fill = metric)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  scale_fill_manual(values = c("darkblue", "red")) +
-  coord_flip() +
-  labs(
-    title = "Close Races vs. Decoy Impact Races",
-    subtitle = "Comparing races with tight margins to those where decoys could matter",
-    y = "Percentage of Total Races (%)",
-    x = "",
-    fill = ""
-  ) +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"))
-
 ### Reallocating votes to victim
-decoy_pairs <- candidate_pairs %>%
+decoy_pairs <- candidate_pairs_CLEA_no_ind %>%
   filter(is_decoy == TRUE)
 
 election_outcomes_changed <- data.frame()
 
 # first a grouped version of decoy pairs to account for main with multiple decoys
 grouped_decoys <- decoy_pairs %>%
-  # get main and decoy PIDs based on pair type
+  # get main and decoy candidates based on pair type, including name and party code
   mutate(
-    main_pid = case_when(
-      Pair_Type == "main-minor" ~ Candidate1_PID,
-      Pair_Type == "minor-main" ~ Candidate2_PID
+    main_name = case_when(
+      Pair_Type == "main-minor" ~ Candidate1_Name,
+      Pair_Type == "minor-main" ~ Candidate2_Name
     ),
-    decoy_pid = case_when(
-      Pair_Type == "main-minor" ~ Candidate2_PID,
-      Pair_Type == "minor-main" ~ Candidate1_PID
-    )
+    main_party_code = case_when(
+      Pair_Type == "main-minor" ~ Candidate1_Party_Name,
+      Pair_Type == "minor-main" ~ Candidate2_Party_Name
+    ),
+    decoy_name = case_when(
+      Pair_Type == "main-minor" ~ Candidate2_Name,
+      Pair_Type == "minor-main" ~ Candidate1_Name
+    ),
+    decoy_party_code = case_when(
+      Pair_Type == "main-minor" ~ Candidate2_Party_Name,
+      Pair_Type == "minor-main" ~ Candidate1_Party_Name
+    ),
+    # create composite identifiers
+    main_id = paste(main_name, main_party_code, Election_ID),
+    decoy_id = paste(decoy_name, decoy_party_code, Election_ID)
   ) %>%
   # keep only relevant pairs
-  filter(!is.na(main_pid), !is.na(decoy_pid)) %>%
+  filter(!is.na(main_name), !is.na(decoy_name)) %>%
   # get unique election + main candidate combinations
-  group_by(Year, State_Name, Constituency_Name, Assembly_No, Election_Type, main_pid) %>%
+  group_by(Country_Code, Year, Election_Month, Constituency_Name, Election_ID, main_id, main_name, main_party_code) %>%
   # collect all decoys for this main candidate
   dplyr::summarize(
-    decoy_pids = list(decoy_pid),
+    decoy_ids = list(decoy_id),
+    decoy_names = list(decoy_name),
+    decoy_party_codes = list(decoy_party_code),
     num_decoys = n(),
     .groups = "drop"
   )
@@ -1742,9 +2277,13 @@ for (i in 1:nrow(grouped_decoys)) {
   # get the current record
   current_group <- grouped_decoys[i,]
   
-  # extract IDs
-  main_candidate_pid <- current_group$main_pid
-  decoy_candidate_pids <- unlist(current_group$decoy_pids)
+  # extract identifiers
+  main_candidate_id <- current_group$main_id
+  main_candidate_name <- current_group$main_name
+  main_candidate_party <- current_group$main_party_code
+  decoy_candidate_ids <- unlist(current_group$decoy_ids)
+  decoy_candidate_names <- unlist(current_group$decoy_names)
+  decoy_candidate_parties <- unlist(current_group$decoy_party_codes)
   
   # debug info
   if (i %% 50 == 0) {
@@ -1752,17 +2291,22 @@ for (i in 1:nrow(grouped_decoys)) {
         "with", current_group$num_decoys, "decoys\n")
   }
   
-  # get election details
-  election_candidates <- all_states_elections %>%
-    filter(Year == current_group$Year,
-           State_Name == current_group$State_Name,
-           Constituency_Name == current_group$Constituency_Name,
-           Assembly_No == current_group$Assembly_No,
-           Election_Type == current_group$Election_Type)
+  # get election details using CLEA column names
+  election_candidates <- CLEA_cleaned_fr_no_ind %>%
+    filter(ctr == current_group$Country_Code,  # country code
+           yr == current_group$Year,           # year
+           mn == current_group$Election_Month, # election month
+           cst_n == current_group$Constituency_Name, # constituency name
+           # create a unique election ID if not directly available
+           paste(ctr, yr, mn, cst_n, sep="_") == current_group$Election_ID)
+  
+  # create candidate identifiers for comparison
+  election_candidates <- election_candidates %>%
+    mutate(candidate_id = paste(can, pty_n, paste(ctr, yr, mn, cst_n, sep="_")))
   
   # check main candidate
   main_candidate_record <- election_candidates %>% 
-    filter(pid == main_candidate_pid)
+    filter(candidate_id == main_candidate_id)
   
   # skip if main candidate not found uniquely
   if (nrow(main_candidate_record) != 1) {
@@ -1771,56 +2315,71 @@ for (i in 1:nrow(grouped_decoys)) {
   
   # get all decoy records
   decoy_candidate_records <- election_candidates %>%
-    filter(pid %in% decoy_candidate_pids)
+    filter(candidate_id %in% decoy_candidate_ids)
   
   # skip if some decoys aren't found
-  if (nrow(decoy_candidate_records) != length(decoy_candidate_pids)) {
+  if (nrow(decoy_candidate_records) != length(decoy_candidate_ids)) {
     next
   }
   
-  # calculate combined vote share of all decoys
-  total_decoy_vote_share <- sum(decoy_candidate_records$Vote_Share_Percentage)
+  # calculate combined vote share of all decoys - using cvs1 (candidate vote share)
+  total_decoy_vote_share <- sum(decoy_candidate_records$cvs1)
   
   # calculate new vote share for main candidate
-  main_old_vote_share <- main_candidate_record$Vote_Share_Percentage
+  main_old_vote_share <- main_candidate_record$cvs1
   main_new_vote_share <- main_old_vote_share + total_decoy_vote_share
   
-  # find the winner
-  winner_record <- election_candidates %>%
-    filter(Position == 1) %>%
-    head(1)  # Take first if tied
+  # find the winner - determine position based on vote share if not available
+  election_candidates_sorted <- election_candidates %>%
+    arrange(desc(cvs1))
+  
+  position_lookup <- data.frame(
+    candidate_id = election_candidates_sorted$candidate_id,
+    Position = 1:nrow(election_candidates_sorted)
+  )
+  
+  # Add position to the records
+  main_candidate_record <- main_candidate_record %>%
+    left_join(position_lookup, by = "candidate_id")
+  
+  # find the winner (position 1)
+  winner_record <- election_candidates_sorted[1, ]
   
   # check if outcome would change
   if (main_candidate_record$Position == 1) {
     outcome_changed <- FALSE
   } else {
-    outcome_changed <- main_new_vote_share > winner_record$Vote_Share_Percentage
+    outcome_changed <- main_new_vote_share > winner_record$cvs1
   }
   
   # record if outcome changed
   if (outcome_changed) {
     result_row <- data.frame(
-      Year = current_group$Year,
-      State_Name = current_group$State_Name,
-      Constituency_Name = current_group$Constituency_Name,
-      Assembly_No = current_group$Assembly_No,
-      Election_Type = current_group$Election_Type,
-      main_candidate = main_candidate_record$Candidate,
-      main_candidate_pid = main_candidate_pid,
+      Country_Code = winner_record$ctr,
+      Year = winner_record$yr,
+      Election_Month = winner_record$mn,
+      Constituency_Name = winner_record$cst_n,
+      Election_ID = paste(winner_record$ctr, winner_record$yr, winner_record$mn, winner_record$cst_n, sep="_"),
+      main_candidate = main_candidate_name,
+      main_party = main_candidate_party,
+      main_id = main_candidate_id,
       main_old_position = main_candidate_record$Position,
       main_old_vote_share = main_old_vote_share,
       num_decoys = current_group$num_decoys,
       total_decoy_vote_share = total_decoy_vote_share,
       main_new_vote_share = main_new_vote_share,
-      winner = winner_record$Candidate,
-      winner_vote_share = winner_record$Vote_Share_Percentage,
-      vote_difference = main_new_vote_share - winner_record$Vote_Share_Percentage,
+      winner = winner_record$can,
+      winner_party = winner_record$pty_n,
+      winner_vote_share = winner_record$cvs1,
+      vote_difference = main_new_vote_share - winner_record$cvs1,
       stringsAsFactors = FALSE
     )
     
     election_outcomes_changed <- rbind(election_outcomes_changed, result_row)
   }
 }
+
+### NONE!
 
 top_examples <- election_outcomes_changed %>%
   arrange(desc(num_decoys), desc(vote_difference)) %>%
@@ -2045,115 +2604,16 @@ for (i in 1:nrow(election_outcomes_changed)) {
   election_outcomes_changed$decoy_details[i] <- decoy_details
 }
 
-### Education
-# finally, education & party
-str(all_states_elections)
-
-education_party_data <- all_states_elections %>%
-  mutate(is_minor = ifelse(Vote_Share_Percentage < 10, TRUE, FALSE)) %>%
-  mutate(candidate_group = case_when(
-    pid %in% minor_candidates_that_are_decoys_of_main ~ "Minor decoys of main candidates",
-    is_minor & !(pid %in% minor_candidates_that_are_decoys_of_main) ~ "Other minor candidates",
-    !is_minor ~ "Main candidates",
-    TRUE ~ "Other candidates"
-  ))
-
-comparison_data <- education_data %>%
-  filter(candidate_group %in% c("Minor decoys of main candidates", "Other minor candidates", "Main candidates"))
-
-ggplot(comparison_data, aes(x = MyNeta_education_numeric, fill = candidate_group)) +
-  geom_density(alpha = 0.7) +
-  labs(
-    title = "Distribution of Education Years",
-    x = "Years of Education",
-    y = "Density",
-    fill = "Candidate Group"
-  ) +
-  theme_minimal() +
-  scale_fill_brewer(palette = "Set1") + 
-  theme(plot.title = element_text(face = "bold"))
-
-education_summary <- comparison_data %>%
-  group_by(MyNeta_education_numeric, candidate_group) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  group_by(candidate_group) %>%
-  mutate(
-    total = sum(count),
-    proportion = count / total
-  ) %>%
-  filter(!is.na(MyNeta_education_numeric)) %>%
-  ungroup()
-
-ggplot(education_summary, aes(x = factor(MyNeta_education_numeric), y = proportion, fill = candidate_group)) +
-  geom_col(position = "dodge") +
-  scale_y_continuous(labels = scales::percent) +
-  labs(
-    x = "Years of Education",
-    y = "Percentage within Candidate Group",
-    fill = "Candidate Group",
-    title = "Education Distribution"
-  ) +
-  theme_minimal()
-
-ggsave(
-  filename = "110425 meeting/Education_by_type.png",
-  plot = last_plot(),
-  width = 10,
-  height = 6,
-  dpi = 300,
-  device = "png", 
-  bg = "white"
-)
-
-party_type_summary <- comparison_data %>%
-  group_by(Party_type_numeric, candidate_group) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  group_by(candidate_group) %>%
-  mutate(
-    total = sum(count),
-    proportion = count / total
-  ) %>%
-  filter(!is.na(Party_type_numeric)) %>%
-  ungroup()
-
-ggplot(party_type_summary, aes(x = factor(Party_type_numeric), y = proportion, fill = candidate_group)) +
-  geom_col(position = "dodge") +
-  scale_x_discrete(
-    labels = c("0" = "Independents", "1" = "Local", "2" = "State", 
-               "3" = "State (Out of State)", "4" = "National")
-  ) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(
-    x = "Party Type",
-    y = "Percentage within Candidate Group",
-    fill = "Candidate Group",
-    title = "Party Type Distribution"
-  ) +
-  theme_minimal()
-
-ggsave(
-  filename = "110425 meeting/Party_by_type.png",
-  plot = last_plot(),
-  width = 10,
-  height = 6,
-  dpi = 300,
-  device = "png", 
-  bg = "white"
-)
-
 ### What do minor-minor and main-main decoys look like? 
-candidate_pairs_minor_minor_filtered <- candidate_pairs_minor_minor[
-  !(candidate_pairs_minor_minor$Candidate1_PID %in% overlap_candidates | 
-      candidate_pairs_minor_minor$Candidate2_PID %in% overlap_candidates), 
-]
+set.seed(2222)
 
-candidate_pairs_minor_minor_sample <- candidate_pairs_minor_minor_filtered %>%
-  sample_n(min(15, nrow(.))) %>%
-  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, 
+candidate_pairs_CLEA_main_minor_sample <- candidate_pairs_CLEA_main_minor %>%
+  sample_n(min(15, nrow(.)), replace = FALSE) %>%
+  dplyr::select(Year, Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, 
                 NGram_Similarity, Masala_Similarity, Metaphone_Similarity)
 
-candidate_pairs_minor_minor_sample %>%
-  dplyr::select(Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, Metaphone_Similarity, 
+candidate_pairs_CLEA_main_minor_sample %>%
+  dplyr::select(Year, Candidate1_Name, Candidate2_Name, Levenshtein_Similarity, Jaro_Winkler_Similarity, Metaphone_Similarity, 
                 NGram_Similarity, Masala_Similarity) %>%
   gt(groupname_col = "Pair_Type") %>%
   # 3dp
@@ -2198,9 +2658,10 @@ candidate_pairs_minor_minor_sample %>%
     )
   ) %>%
   tab_header(
-    title = "High Similarity Candidate Pairs (Above 99th Percentile) Minor-Minor",
+    title = "High Similarity Candidate Pairs (Above 99th Percentile) Main-Minor",
   ) %>%
   cols_label(
+    Year = "Year", 
     Candidate1_Name = "Name 1",
     Candidate2_Name = "Name 2",
     Levenshtein_Similarity = "Levenshtein",
@@ -2272,15 +2733,3 @@ candidate_pairs_main_main_sample %>%
     Masala_Similarity = "Masala",
     NGram_Similarity = "NGram"
   )
-
-### WEIRD SHIT
-# in 1995 elections theres a decoy for a "dilip kumar yadav" from JD
-# in 2000, that "dilip kumar yadav" identified by permanent ID is now an independent candidate. he is main. 
-# now there is another, different "dilip kumar yadav" from SP. 
-dhamdaha_BH_1995_AE <- candidate_pairs %>%
-  filter(Year == "1995" & State_Name == "Bihar" & Constituency_Name == "DHAMDAHA" & Election_Type == "State Assembly Election (AE)")
-
-dhamdaha_BH_2000_AE <- candidate_pairs %>%
-  filter(Year == "2000" & State_Name == "Bihar" & Constituency_Name == "DHAMDAHA" & Election_Type == "State Assembly Election (AE)")
-
-### Notes
