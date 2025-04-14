@@ -427,7 +427,13 @@ ggsave(
   bg = "white"
 )
 
-### how are main_main, main_minor and minor_minor different? false positives?
+### Same thing for new_minor
+candidate_pairs_new_minor <- candidate_pairs_new_minor %>%
+  mutate(
+    Candidate1_Election_ID = paste(Year, State_Name, Constituency_Name, Assembly_No, Election_Type, Candidate1_PID, sep = "_"),
+    Candidate2_Election_ID = paste(Year, State_Name, Constituency_Name, Assembly_No, Election_Type, Candidate2_PID, sep = "_")
+  )
+
 candidate_pairs_main_minor <- candidate_pairs_new_minor %>%
   filter(Pair_Type == "main-minor" | Pair_Type == "minor-main",
          is_decoy == TRUE)
@@ -441,17 +447,17 @@ candidate_pairs_minor_minor <- candidate_pairs_new_minor %>%
          is_decoy == TRUE)
 
 minor_candidates_that_are_decoys_of_minor <- unique(c(
-  candidate_pairs_minor_minor$Candidate1_PID,
-  candidate_pairs_minor_minor$Candidate2_PID
+  candidate_pairs_minor_minor$Candidate1_Election_ID,
+  candidate_pairs_minor_minor$Candidate2_Election_ID
 ))
 
 minor_candidates_that_are_decoys_of_main <- unique(c(
   candidate_pairs_main_minor %>%
     filter(Pair_Type == "minor-main") %>%
-    pull(Candidate1_PID),
+    pull(Candidate1_Election_ID),
   candidate_pairs_main_minor %>%
     filter(Pair_Type == "main-minor") %>%
-    pull(Candidate2_PID)
+    pull(Candidate2_Election_ID)
 ))
 
 overlap_candidates <- intersect(minor_candidates_that_are_decoys_of_minor, minor_candidates_that_are_decoys_of_main)
@@ -472,8 +478,8 @@ elections_with_main_main_decoys <- candidate_pairs_new_minor %>%
 # removed overlap minor candidates!
 elections_with_minor_minor_decoys <- candidate_pairs_new_minor %>%
   filter((Pair_Type == "minor-minor") & is_decoy == TRUE) %>%
-  filter(!(Candidate1_PID %in% minor_candidates_that_are_decoys_of_main |
-             Candidate2_PID %in% minor_candidates_that_are_decoys_of_main)) %>%
+  filter(!(Candidate1_Election_ID %in% minor_candidates_that_are_decoys_of_main |
+             Candidate2_Election_ID %in% minor_candidates_that_are_decoys_of_main)) %>%
   distinct(Year, State_Name, Constituency_Name, Assembly_No, Election_Type) %>%
   nrow()
 
@@ -501,8 +507,8 @@ decoy_by_pair_type <- candidate_pairs_new_minor %>%
   ) %>%
   # in "minor-minor" collapse dont have minor candidates that are decoys of main
   filter(!(Consolidated_Pair_Type == "minor-minor" &
-             (Candidate1_PID %in% minor_candidates_that_are_decoys_of_main |
-                Candidate2_PID %in% minor_candidates_that_are_decoys_of_main))) %>%
+             (Candidate1_Election_ID %in% minor_candidates_that_are_decoys_of_main |
+                Candidate2_Election_ID %in% minor_candidates_that_are_decoys_of_main))) %>%
   # group by the consolidated pair type
   group_by(Consolidated_Pair_Type) %>%
   # calculate summary statistics
