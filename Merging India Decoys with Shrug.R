@@ -57,16 +57,11 @@ pacman::p_load(
 all_states_elections <- read.csv("Raw Data/all_states_elections.csv")
 CLEA_cleaned <- read.csv("Cleaned Data/CLEA_cleaned.csv")
 candidate_pairs <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet.csv")
-candidate_pairs_CLEA <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA.csv")
-candidate_pairs_CLEA_the_rest <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA_the_rest.csv")
 
 triv <- read_csv("/Users/anirvin/Downloads/Corruption Protest Data/Raw Data/shrug-triv-cand-csv/trivedi_candidates_clean.csv")
 
 shrid_07 <- read_csv("/Users/anirvin/Downloads/Corruption Protest Data/Raw Data/shrug-con-keys-csv/shrid_frag_con07_key.csv")
 shrid_08 <- read_csv("/Users/anirvin/Downloads/Corruption Protest Data/Raw Data/shrug-con-keys-csv/shrid_frag_con08_key.csv")
-
-### Combining the candidate_pairs_CLEA dfs
-candidate_pairs_CLEA_full <- rbind(candidate_pairs_CLEA, candidate_pairs_CLEA_the_rest)
 
 ### Shrug data
 ac07_name_key <- read.csv("Shrug Data/shrug-con-keys-csv/ac07_name_key.csv")
@@ -185,125 +180,6 @@ all_states_elections_filtered <- all_states_elections_filtered %>%
 all_states_elections_filtered <- all_states_elections_filtered %>%
   filter(DelimID > 2)
 
-### Matching constituency names in all_states_electionss to ac07_id and ac08_id
-str(all_states_elections)
-str(ac07_name_key)
-str(ac08_name_key)
-
-# mapping state id to name
-state_id_map_ac07 <- unique(ac07_name_key[, c("pc01_state_name", "pc01_state_id")])
-colnames(state_id_map_ac07) <- c("state_name", "state_id_ac07")
-
-state_id_map_ac08 <- unique(ac08_name_key[, c("pc01_state_name", "pc01_state_id")])
-colnames(state_id_map_ac08) <- c("state_name", "state_id_ac08")
-
-# which elections in 2008?
-all_states_elections_filtered_2008 <- all_states_elections_filtered %>%
-  filter(Year == "2008")
-
-# filter all_states_elections for before 2008
-all_states_elections_filtered_pre_08 <- all_states_elections_filtered %>%
-  filter(Year < "2008")
-
-# for every constituency, create both ac07 and ac08 id
-format_state_id <- function(id) {
-  sprintf("%02d", id)
-}
-
-format_constituency_id <- function(id) {
-  sprintf("%03d", id)
-}
-
-unique(all_states_elections$State_Name)
-
-# add ac07_id col
-all_states_elections_filtered$ac07_id <- NA
-
-# go through rows to create ac07_id
-for (i in 1:nrow(all_states_elections_filtered)) {
-  state_name <- all_states_elections_filtered$State_Name[i]
-  
-  # find the state_id from the state_map for this state name
-  state_id_row <- state_id_map_ac07[state_id_map_ac07$state_name == state_name, ]
-  
-  if (nrow(state_id_row) > 0 && !is.na(state_id_row$state_id_ac07)) {
-    state_id_07 <- state_id_row$state_id_ac07
-    
-    # get constituency_id from Constituency_No column
-    constituency_id <- all_states_elections_filtered$Constituency_No[i]
-    
-    # format state_id and constituency_id
-    formatted_state_id <- format_state_id(state_id_07)
-    formatted_constituency_id <- format_constituency_id(constituency_id)
-    
-    # create the ac07_id as 2007-state_id-constituency_id
-    all_states_elections_filtered$ac07_id[i] <- paste0("2007-", formatted_state_id, "-", formatted_constituency_id)
-  }
-}
-
-# add ac08_id
-all_states_elections_filtered$ac08_id <- NA
-
-# go through rows to create ac08_id
-for (i in 1:nrow(all_states_elections_filtered)) {
-  state_name <- all_states_elections_filtered$State_Name[i]
-  
-  # find the state_id from the state_map for this state name
-  state_id_row <- state_id_map_ac08[state_id_map_ac08$state_name == state_name, ]
-  
-  if (nrow(state_id_row) > 0 && !is.na(state_id_row$state_id_ac08)) {
-    state_id_08 <- state_id_row$state_id_ac08
-    
-    # get constituency_id from Constituency_No column
-    constituency_id <- all_states_elections_filtered$Constituency_No[i]
-    
-    # format state_id and constituency_id
-    formatted_state_id <- format_state_id(state_id_08)
-    formatted_constituency_id <- format_constituency_id(constituency_id)
-    
-    # create the ac08_id as 2008-state_id-constituency_id
-    all_states_elections_filtered$ac08_id[i] <- paste0("2008-", formatted_state_id, "-", formatted_constituency_id)
-  }
-}
-
-# check the first few rows to see if its all good
-head(all_states_elections_filtered[, c("State_Name", "Constituency_No", "ac07_id", "ac08_id")])
-
-# check how many ac07_id values from all_states_elections match with ac07_name_key
-matching_ac07_ids <- all_states_elections_filtered$ac07_id %in% ac07_name_key$ac07_id
-match_count_ac07 <- sum(matching_ac07_ids, na.rm = TRUE)
-total_count_ac07 <- sum(!is.na(all_states_elections_filtered$ac07_id))
-
-all_states_elections_filtered$ac07_id_has_match <- all_states_elections_filtered$ac07_id %in% ac07_name_key$ac07_id
-
-# do the same check for ac08_id 
-matching_ac08_ids <- all_states_elections_filtered$ac08_id %in% ac08_name_key$ac08_id
-match_count_ac08 <- sum(matching_ac08_ids, na.rm = TRUE)
-total_count_ac08 <- sum(!is.na(all_states_elections_filtered$ac08_id))
-
-all_states_elections_filtered$ac08_id_has_match <- all_states_elections_filtered$ac08_id %in% ac08_name_key$ac08_id
-
-all_states_elections_filtered_weird_matches <- all_states_elections_filtered %>%
-  filter(ac08_id_has_match == TRUE & ac07_id_has_match == FALSE | 
-           ac07_id_has_match == FALSE & ac08_id_has_match == TRUE | 
-           ac07_id_has_match == FALSE & ac08_id_has_match == FALSE) %>%
-  dplyr::select(State_Name, Constituency_Name, Constituency_No, Year, ac07_id, ac07_id_has_match, ac08_id, ac08_id_has_match)
-
-# drop all of these
-all_states_elections_final <- all_states_elections_filtered %>%
-  filter(ac08_id_has_match == TRUE & ac07_id_has_match == TRUE)
-
-# what is happening with the ids
-what_is_happening <- all_states_elections_final %>%
-  dplyr::select(Year, Constituency_No, Constituency_Name, ac07_id, ac08_id, 
-                ac07_id_has_match, ac08_id_has_match)
-  # AH I SEE. the identifier for a constituency in pre-2007, based on post-2008 constituency number, 
-  # may actually identify a DIFFERENT constituency pre-2007. for e.g. achampet ac08_id is 2008-28-082. 
-  # but, since we build both 2007 and 2008 ids, the constructed 2007 id of 2007-28-082 corresponds to a 
-  # diff constituency. 
-  # So ... we need to use years. 
-
-### ANI!!! THERE IS A FUCKING DELIMID! 
 all_states_elections_filtered_pre_delim <- all_states_elections_filtered %>%
   filter(DelimID == 3) %>%
   mutate(
@@ -411,6 +287,38 @@ candidate_pairs <- candidate_pairs %>%
                                                 .default = NA_real_
   ))
 
+filter_out_initial_names <- function(df) {
+  # pattern for "initial (with/without period) followed by name"
+  initial_pattern <- "^[A-Z]\\s*\\.?\\s*[A-Za-z]+$"
+  
+  # pattern for just a single name
+  single_name_pattern <- "^[A-Za-z]+$"
+  
+  # combined pattern using OR (|)
+  combined_pattern <- paste0("(", initial_pattern, ")|(", single_name_pattern, ")")
+  
+  # check if either candidate matches either pattern
+  matches_pattern1 <- grepl(combined_pattern, df$Candidate1_Name)
+  matches_pattern2 <- grepl(combined_pattern, df$Candidate2_Name)
+  
+  # identify rows to be filtered out (either candidate matches either pattern)
+  rows_to_filter <- matches_pattern1 | matches_pattern2
+  
+  # create filtered dataframe and dataframe of filtered-out rows
+  filtered_df <- df[!rows_to_filter, ]
+  filtered_out_df <- df[rows_to_filter, ]
+  
+  # return both dataframes as a list
+  return(list(
+    kept = filtered_df,
+    filtered_out = filtered_out_df
+  ))
+}
+
+results <- filter_out_initial_names(candidate_pairs)
+candidate_pairs_2 <- results$kept
+candidate_pairs_out <- results$filtered_out
+
 # making is_decoy
 # thresholds
 lv_99th <- quantile(candidate_pairs$Levenshtein_Similarity, 0.99, na.rm = TRUE)
@@ -430,7 +338,7 @@ candidate_pairs <- candidate_pairs %>%
     FALSE
   ))
 
-constituency_metrics <- candidate_pairs %>%
+constituency_election_metrics <- candidate_pairs %>%
   group_by(State_Name, Year, Constituency_Name, Election_Type, Assembly_No) %>%
   dplyr::summarize(
     # basic constituency metrics
@@ -515,36 +423,33 @@ constituency_metrics <- candidate_pairs %>%
 
 # get the overall constituency_metrics df ready
 # filter out GE
-constituency_metrics <- constituency_metrics %>%
+constituency_election_metrics <- constituency_election_metrics %>%
   filter(Election_Type == "State Assembly Election (AE)")
+constituency_election_metrics <- constituency_election_metrics[!constituency_election_metrics$State_Name %in% states_to_remove, ]
+constituency_election_metrics$State_Name <- sapply(constituency_election_metrics$State_Name, standardize_state_names)
 
-constituency_metrics$State_Name <- sapply(constituency_metrics$State_Name, standardize_state_names)
-
-constituency_metrics <- constituency_metrics %>%
+constituency_election_metrics <- constituency_election_metrics %>%
   left_join(unique_elections_pre_delim, by = c("State_Name", "Year", "Constituency_Name", 
                                                "Assembly_No"))
 
-constituency_metrics <- constituency_metrics %>%
+constituency_election_metrics <- constituency_election_metrics %>%
   left_join(unique_elections_post_delim, by = c("State_Name", "Year", "Constituency_Name", 
                                                "Assembly_No"))
 
 # drop if no ac07 or ac08 id
-constituency_metrics <- constituency_metrics %>%
+constituency_election_metrics <- constituency_election_metrics %>%
   filter(!is.na(ac07_id) | !is.na(ac08_id)) %>%
   dplyr::select(-Election_Type.y, -Election_Type.x, -Election_Type)
 
-constituency_metrics_ac07 <- constituency_metrics %>%
+constituency_election_metrics_ac07 <- constituency_election_metrics %>%
   filter(is.na(ac08_id)) %>%
   dplyr::select(-ac08_id)
 
-constituency_metrics_ac08 <- constituency_metrics %>%
+constituency_election_metrics_ac08 <- constituency_election_metrics %>%
   filter(is.na(ac07_id)) %>%
   dplyr::select(-ac07_id)
 
-str(constituency_metrics)
-
-
-
+str(constituency_election_metrics)
 
 # how do we combine pre and post delim like we did for corruption?
 constituency_crosswalk <- shrid_07 %>%
@@ -564,117 +469,2239 @@ constituency_crosswalk <- shrid_07 %>%
   ) %>%
   ungroup()
 
-# get top match for each 2007 constituency (for simple mapping)
-ac07_to_ac08_mapping <- constituency_crosswalk %>%
-  group_by(ac07_id) %>%
-  arrange(desc(weight)) %>%
-  slice(1) %>%
-  ungroup() %>%
-  dplyr::select(ac07_id, ac08_id, weight)
-
-# get top match for each 2008 constituency (for reverse mapping)
-ac08_to_ac07_mapping <- constituency_crosswalk %>%
-  group_by(ac08_id) %>%
-  arrange(desc(weight)) %>%
-  slice(1) %>%
-  ungroup() %>%
-  dplyr::select(ac08_id, ac07_id, weight)
-
-# handle ac07_id using crosswalk
-# join pre2011 with crosswalk mapping
-temp_constituency_metrics <- constituency_metrics_ac07 %>%
-  left_join(constituency_crosswalk, by = "ac07_id") %>%
-  # filter to keep only valid mappings
-  filter(!is.na(ac08_id))
-
-# weight by crosswalk weight
-# weight represents what proportion of the ac07 constituency maps to each ac08 constituency
-str(temp_constituency_metrics)
-
-weighted_07_08 <- temp_constituency_metrics %>%
-  mutate(across(
-    c(total_candidates, decoy_candidates, decoy_share, total_votes, 
-      total_votes_to_decoys, decoy_vote_share, winning_margin, 
-      winning_margin_percentage, winner_vote_share, runner_up_vote_share, 
-      main_without_decoy_party, weight),  # optionally include weight itself
-    ~ . * weight
+constituency_election_metrics <- constituency_election_metrics %>%
+  mutate(post_delimitation = case_when(
+    !is.na(ac08_id) ~ 1,
+    TRUE ~ 0
   ))
 
-# agg by ac08_id to get weighted averages
-# so this correctly distributes values across post-delimitation constituencies
-agg_07_08 <- weighted_07_08 %>%
-  group_by(ac08_id) %>%
+str(constituency_election_metrics)
+
+constituency_election_metrics <- constituency_election_metrics %>%
+  mutate(constituency_id = ifelse(is.na(ac08_id), ac07_id, ac08_id))
+
+constituency_metrics <- constituency_election_metrics %>%
+  group_by(constituency_id, State_Name, Constituency_Name) %>%
   dplyr::summarize(
-    total_candidates = mean(total_candidates, na.rm = TRUE),
-    decoy_candidates = mean(decoy_candidates, na.rm = TRUE),
-    decoy_share = mean(decoy_share, na.rm = TRUE),
-    total_votes = mean(total_votes, na.rm = TRUE),
-    total_votes_to_decoys = mean(total_votes_to_decoys, na.rm = TRUE),
+    avg_total_candidates = mean(total_candidates, na.rm = TRUE),
+    avg_total_votes = mean(total_votes, na.rm = TRUE),
+    avg_winning_margin_pct = mean(winning_margin_percentage, na.rm = TRUE),
+    years_count = n_distinct(Year),
+    avg_decoy_candidates = mean(decoy_candidates, na.rm = TRUE), 
+    avg_decoy_share = mean(decoy_share, na.rm = TRUE), 
     decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
-    winning_margin = mean(winning_margin, na.rm = TRUE),
-    winning_margin_percentage = mean(winning_margin_percentage, na.rm = TRUE),
-    winner_vote_share = mean(winner_vote_share, na.rm = TRUE),
-    runner_up_vote_share = mean(runner_up_vote_share, na.rm = TRUE)
+    .groups = "drop"
+  )
+
+constituency_metrics_74_94 <- constituency_election_metrics %>%
+  filter(Year >= 1974 & Year <= 1994) %>%
+  group_by(constituency_id, State_Name, Constituency_Name) %>%
+  dplyr::summarize(
+    avg_total_candidates = mean(total_candidates, na.rm = TRUE),
+    avg_total_votes = mean(total_votes, na.rm = TRUE),
+    avg_winning_margin_pct = mean(winning_margin_percentage, na.rm = TRUE),
+    years_count = n_distinct(Year),
+    avg_decoy_candidates = mean(decoy_candidates, na.rm = TRUE), 
+    avg_decoy_share = mean(decoy_share, na.rm = TRUE), 
+    decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+constituency_metrics_95_04 <- constituency_election_metrics %>%
+  filter(Year >= 1995 & Year <= 2004) %>%
+  group_by(constituency_id, State_Name, Constituency_Name) %>%
+  dplyr::summarize(
+    avg_total_candidates = mean(total_candidates, na.rm = TRUE),
+    avg_total_votes = mean(total_votes, na.rm = TRUE),
+    avg_winning_margin_pct = mean(winning_margin_percentage, na.rm = TRUE),
+    years_count = n_distinct(Year),
+    avg_decoy_candidates = mean(decoy_candidates, na.rm = TRUE), 
+    avg_decoy_share = mean(decoy_share, na.rm = TRUE), 
+    decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+constituency_metrics_05_23 <- constituency_election_metrics %>%
+  filter(Year >= 2005 & Year <= 2023) %>%
+  group_by(constituency_id, State_Name, Constituency_Name) %>%
+  dplyr::summarize(
+    avg_total_candidates = mean(total_candidates, na.rm = TRUE),
+    avg_total_votes = mean(total_votes, na.rm = TRUE),
+    avg_winning_margin_pct = mean(winning_margin_percentage, na.rm = TRUE),
+    years_count = n_distinct(Year),
+    avg_decoy_candidates = mean(decoy_candidates, na.rm = TRUE), 
+    avg_decoy_share = mean(decoy_share, na.rm = TRUE), 
+    decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+### do for filtered out names
+# making is_decoy
+# thresholds
+lv_99th <- quantile(candidate_pairs_2$Levenshtein_Similarity, 0.99, na.rm = TRUE)
+jw_99th <- quantile(candidate_pairs_2$Jaro_Winkler_Similarity, 0.99, na.rm = TRUE)
+mp_99th <- quantile(candidate_pairs_2$Metaphone_Similarity, 0.99, na.rm = TRUE)
+mas_99th <- quantile(candidate_pairs_2$Masala_Similarity, 0.99, na.rm = TRUE)
+ng_99th <- quantile(candidate_pairs_2$NGram_Similarity, 0.99, na.rm = TRUE)
+
+candidate_pairs_2 <- candidate_pairs_2 %>%
+  mutate(is_decoy = ifelse(
+    Levenshtein_Similarity > lv_99th & 
+      Jaro_Winkler_Similarity > jw_99th & 
+      Metaphone_Similarity > mp_99th & 
+      Masala_Similarity > mas_99th & 
+      NGram_Similarity > ng_99th,
+    TRUE, 
+    FALSE
+  ))
+
+constituency_election_metrics_2 <- candidate_pairs_2 %>%
+  group_by(State_Name, Year, Constituency_Name, Election_Type, Assembly_No) %>%
+  dplyr::summarize(
+    # basic constituency metrics
+    total_candidates = max(Candidate1_N_Cand, na.rm = TRUE),
+    decoy_candidates = sum((is_decoy & Pair_Type == "main-minor") | 
+                             (is_decoy & Pair_Type == "minor-main"), na.rm = TRUE),
+    decoy_share = round(sum((is_decoy & Pair_Type == "main-minor") | 
+                              (is_decoy & Pair_Type == "minor-main"), na.rm = TRUE) /
+                          max(Candidate1_N_Cand, na.rm = TRUE) * 100, 2),
+    
+    # vote metrics
+    total_votes = max(Candidate1_Valid_Votes, na.rm = TRUE),
+    
+    # count votes to decoys - adjusted to use is_decoy
+    total_votes_to_decoys = sum(
+      ifelse(is_decoy & Pair_Type == "main-minor", Candidate2_Votes, 
+             ifelse(is_decoy & Pair_Type == "minor-main", Candidate1_Votes, 0)), 
+      na.rm = TRUE),
+    decoy_vote_share = round(
+      sum(ifelse(is_decoy & Pair_Type == "main-minor", Candidate2_Votes, 
+                 ifelse(is_decoy & Pair_Type == "minor-main", Candidate1_Votes, 0)), 
+          na.rm = TRUE) / max(Candidate1_Valid_Votes, na.rm = TRUE) * 100, 2),
+    
+    # winner and runner-up metrics
+    winning_margin = min(Candidate1_Margin[Candidate1_Position == 1], na.rm = TRUE),
+    winning_margin_percentage = min(Candidate1_Margin_Percentage[Candidate1_Position == 1], na.rm = TRUE),
+    winner_party = first(Candidate1_Party[Candidate1_Position == 1]),
+    runner_up_party = first(Candidate1_Party[Candidate1_Position == 2]),
+    winner_vote_share = max(Candidate1_Vote_Share_Percentage[Candidate1_Position == 1], na.rm = TRUE),
+    runner_up_vote_share = max(Candidate1_Vote_Share_Percentage[Candidate1_Position == 2], na.rm = TRUE),
+    
+    # check for decoys associated with winner/runner-up - using is_decoy
+    winner_has_decoys = any((is_decoy & Pair_Type == "main-minor" & Candidate1_Position == 1) | 
+                              (is_decoy & Pair_Type == "minor-main" & Candidate2_Position == 1), 
+                            na.rm = TRUE),
+    runner_up_has_decoys = any((is_decoy & Pair_Type == "main-minor" & Candidate1_Position == 2) | 
+                                 (is_decoy & Pair_Type == "minor-main" & Candidate2_Position == 2), 
+                               na.rm = TRUE),
+    
+    # education metrics
+    education = mean(c(Candidate1_MyNeta_education_numeric,
+                       Candidate2_MyNeta_education_numeric), na.rm = TRUE),
+    
+    # educ & party for decoys - using is_decoy
+    decoy_education = mean(
+      c(Candidate2_MyNeta_education_numeric[is_decoy & Pair_Type == "main-minor"],
+        Candidate1_MyNeta_education_numeric[is_decoy & Pair_Type == "minor-main"]),
+      na.rm = TRUE),
+    decoy_party = mean(
+      c(Candidate2_Party_type_numeric[is_decoy & Pair_Type == "main-minor"],
+        Candidate1_Party_type_numeric[is_decoy & Pair_Type == "minor-main"]),
+      na.rm = TRUE),
+    
+    # educ & party for main with decoys - using is_decoy
+    main_with_decoy_education = mean(
+      c(Candidate1_MyNeta_education_numeric[is_decoy & Pair_Type == "main-minor"],
+        Candidate2_MyNeta_education_numeric[is_decoy & Pair_Type == "minor-main"]),
+      na.rm = TRUE),
+    main_with_decoy_party = mean(
+      c(Candidate1_Party_type_numeric[is_decoy & Pair_Type == "main-minor"],
+        Candidate2_Party_type_numeric[is_decoy & Pair_Type == "minor-main"]),
+      na.rm = TRUE),
+    
+    # educ & party for main without decoys
+    main_without_decoy_education = mean(
+      c(Candidate1_MyNeta_education_numeric[!is_decoy & (Pair_Type == "main-minor" | Pair_Type == "main-main")],
+        Candidate2_MyNeta_education_numeric[!is_decoy & (Pair_Type == "minor-main" | Pair_Type == "main-main")]),
+      na.rm = TRUE),
+    main_without_decoy_party = mean(
+      c(Candidate1_Party_type_numeric[!is_decoy & (Pair_Type == "main-minor" | Pair_Type == "main-main")],
+        Candidate2_Party_type_numeric[!is_decoy & (Pair_Type == "minor-main" | Pair_Type == "main-main")]),
+      na.rm = TRUE),
+    
+    .groups = "drop"
+  ) %>%
+  mutate(
+    close_race = ifelse(winning_margin_percentage < 5, TRUE, FALSE),
+    decoy_impact_potential = ifelse(decoy_vote_share > winning_margin_percentage, TRUE, FALSE)
+  ) %>%
+  # sort by state, year and constituency
+  arrange(State_Name, Year, Constituency_Name, Election_Type, Assembly_No)
+
+# get the overall constituency_metrics df ready
+# filter out GE
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  filter(Election_Type == "State Assembly Election (AE)")
+constituency_election_metrics_2 <- constituency_election_metrics_2[!constituency_election_metrics_2$State_Name %in% states_to_remove, ]
+constituency_election_metrics_2$State_Name <- sapply(constituency_election_metrics_2$State_Name, standardize_state_names)
+
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  left_join(unique_elections_pre_delim, by = c("State_Name", "Year", "Constituency_Name", 
+                                               "Assembly_No"))
+
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  left_join(unique_elections_post_delim, by = c("State_Name", "Year", "Constituency_Name", 
+                                                "Assembly_No"))
+
+# drop if no ac07 or ac08 id
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  filter(!is.na(ac07_id) | !is.na(ac08_id)) %>%
+  dplyr::select(-Election_Type.y, -Election_Type.x, -Election_Type)
+
+constituency_election_metrics_2_ac07 <- constituency_election_metrics_2 %>%
+  filter(is.na(ac08_id)) %>%
+  dplyr::select(-ac08_id)
+
+constituency_election_metrics_2_ac08 <- constituency_election_metrics_2 %>%
+  filter(is.na(ac07_id)) %>%
+  dplyr::select(-ac07_id)
+
+str(constituency_election_metrics_2)
+
+# how do we combine pre and post delim like we did for corruption?
+constituency_crosswalk <- shrid_07 %>%
+  dplyr::select(shrid2, ac07_id, fragment_wt_con07) %>%
+  inner_join(
+    shrid_08 %>% dplyr::select(shrid2, ac08_id, fragment_wt_con08),
+    by = "shrid2",
+    relationship = "many-to-many"
+  ) %>%
+  # aggregate to create constituency-to-constituency mapping with weights
+  group_by(ac07_id, ac08_id) %>%
+  dplyr::summarize(
+    # create a weight based on the sum of fragment weights
+    weight = sum(fragment_wt_con07 * fragment_wt_con08) / 
+      (sum(fragment_wt_con07) * sum(fragment_wt_con08)),
+    n_shrids = n()  # no. of shrids connecting constituencies
   ) %>%
   ungroup()
 
-# join the weighted 07 data to our final dataset
-final_dataset <- final_dataset %>%
-  left_join(
-    agg_07_08,
-    by = "ac08_id",
-    suffix = c("", "_07")
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  mutate(post_delimitation = case_when(
+    !is.na(ac08_id) ~ 1,
+    TRUE ~ 0
+  ))
+
+str(constituency_election_metrics_2)
+
+constituency_election_metrics_2 <- constituency_election_metrics_2 %>%
+  mutate(constituency_id = ifelse(is.na(ac08_id), ac07_id, ac08_id))
+
+constituency_metrics_2 <- constituency_election_metrics_2 %>%
+  group_by(constituency_id, State_Name, Constituency_Name) %>%
+  dplyr::summarize(
+    avg_total_candidates = mean(total_candidates, na.rm = TRUE),
+    avg_total_votes = mean(total_votes, na.rm = TRUE),
+    avg_winning_margin_pct = mean(winning_margin_percentage, na.rm = TRUE),
+    years_count = n_distinct(Year),
+    avg_decoy_candidates = mean(decoy_candidates, na.rm = TRUE), 
+    avg_decoy_share = mean(decoy_share, na.rm = TRUE), 
+    decoy_vote_share = mean(decoy_vote_share, na.rm = TRUE),
+    .groups = "drop"
   )
 
-final_dataset <- final_dataset %>%
-  mutate(
-    used_only_07_data = !is.na(turnout_percentage_pre_07) & is.na(turnout_percentage_pre),
-    used_07_data = is.na(turnout_percentage_pre)
-  )
-
-# coalesce the columns
-final_dataset <- final_dataset %>%
-  mutate(
-    # do manually lah
-    turnout_percentage_pre = coalesce(turnout_percentage_pre, turnout_percentage_pre_07),
-    n_cand_pre = coalesce(n_cand_pre, n_cand_pre_07),
-    total_cand_pre = coalesce(total_cand_pre, total_cand_pre_07),
-    n_elections_pre = coalesce(n_elections_pre, n_elections_pre_07),
-    total_criminals_pre = coalesce(total_criminals_pre, total_criminals_pre_07),
-    total_num_crim_pre = coalesce(total_num_crim_pre, total_num_crim_pre_07),
-    total_major_criminals_pre = coalesce(total_major_criminals_pre, total_major_criminals_pre_07),
-    mean_ed_pre = coalesce(mean_ed_pre, mean_ed_pre_07),
-    cong_vote_share_pre = coalesce(cong_vote_share_pre, cong_vote_share_pre_07),
-    bjp_vote_share_pre = coalesce(bjp_vote_share_pre, bjp_vote_share_pre_07),
-    bsp_vote_share_pre = coalesce(bsp_vote_share_pre, bsp_vote_share_pre_07),
-    crimes_per_politician_pre = coalesce(crimes_per_politician_pre, crimes_per_politician_pre_07),
-    candidates_per_election_pre = coalesce(candidates_per_election_pre, candidates_per_election_pre_07),
-    crimes_per_election_pre = coalesce(crimes_per_election_pre, crimes_per_election_pre_07),
-    criminals_per_election_pre = coalesce(criminals_per_election_pre, criminals_per_election_pre_07),
-    big_party_vote_share_pre = coalesce(big_party_vote_share_pre, big_party_vote_share_pre_07)
-  )
-
-final_dataset <- final_dataset %>%
-  dplyr::select(-ends_with("_07"))
-
-# additional metadata about crosswalk
-final_dataset <- final_dataset %>%
-  left_join(
-    constituency_crosswalk %>%
-      group_by(ac08_id) %>%
-      dplyr::summarize(
-        n_source_constituencies = n_distinct(ac07_id),
-        avg_crosswalk_weight = mean(weight, na.rm = TRUE),
-        max_crosswalk_weight = max(weight, na.rm = TRUE),
-        n_shrids_in_crosswalk = sum(n_shrids, na.rm = TRUE)
-      ),
-    by = "ac08_id"
-  )
+# ### Weighting ac07 to ac08 because geographical correlation for exog vars might exist. 
+# # NEED TO FIGURE OUT. 
+# str(constituency_metrics)
+# str(constituency_crosswalk)
+# 
+# constituency_metrics_pre <- constituency_metrics %>%
+#   filter(startsWith(constituency_id, "2007"))
+# 
+# weighted_results <- data.frame()
+# 
+# unique_2008_ids <- unique(constituency_crosswalk$ac08_id)
+# 
+# constituency_metrics_tn <- constituency_metrics %>%
+#   filter(State_Name == "tamil nadu")
+# 
+# # for each ac08
+# for (ac08_id in unique_2008_ids) {
+#   # get all matching rows from the crosswalk
+#   matches <- constituency_crosswalk %>% 
+#     filter(ac08_id == ac08_id)
+#   
+#   # init aggregated values
+#   agg_values <- list()
+#   
+#   # columns to apply weights to
+#   numeric_cols <- c("avg_total_candidates", "avg_total_votes", 
+#                     "avg_winning_margin_pct", "avg_decoy_candidates", 
+#                     "avg_decoy_share", "decoy_vote_share")
+#   
+#   # add 0s
+#   for (col in numeric_cols) {
+#     agg_values[[col]] <- 0
+#   }
+#   
+#   total_weight <- 0
+#   weighted_state_names <- character()
+#   weighted_constituency_names <- character()
+#   max_years_count <- 0
+#   
+#   # process each matching 2007 constituency
+#   for (i in 1:nrow(matches)) {
+#     ac07_id <- matches$ac07_id[i]
+#     match_weight <- matches$weight[i]
+#     
+#     # get original constituency data
+#     orig_const <- constituency_metrics_tn %>% 
+#       filter(constituency_id == ac07_id)
+#     
+#     if (nrow(orig_const) == 0) next
+#     
+#     # store state and constituency names with weights for later weighted selection
+#     weighted_state_names <- c(weighted_state_names, 
+#                               rep(orig_const$State_Name[1], round(match_weight * 100)))
+#     
+#     weighted_constituency_names <- c(weighted_constituency_names, 
+#                                      rep(orig_const$Constituency_Name[1], round(match_weight * 100)))
+#     
+#     # keep track of max years count - this might be more relevant than weighted average
+#     max_years_count <- max(max_years_count, orig_const$years_count[1])
+#     
+#     # apply weights to numeric columns
+#     for (col in numeric_cols) {
+#       if (!is.na(orig_const[[col]])) {
+#         agg_values[[col]] <- agg_values[[col]] + (orig_const[[col]] * match_weight)
+#         # count the weight if the value wasn't NA
+#         if (col == numeric_cols[1]) {  # Only count once per row
+#           total_weight <- total_weight + match_weight
+#         }
+#       }
+#     }
+#   }
+#   
+#   if (total_weight > 0) {
+#     # choose the most frequently weighted state and constituency name
+#     state_name <- names(sort(table(weighted_state_names), decreasing = TRUE)[1])
+#     constituency_name <- paste0(names(sort(table(weighted_constituency_names), decreasing = TRUE)[1]), 
+#                                 " (weighted)")
+#     
+#     # create a new row with the aggregated values
+#     new_row <- data.frame(
+#       constituency_id = ac08_id,
+#       State_Name = state_name,
+#       Constituency_Name = constituency_name,
+#       years_count = max_years_count  # use max rather than weighted average
+#     )
+#     
+#     # add weighted num cols
+#     for (col in numeric_cols) {
+#       # normalize by total weight
+#       if (total_weight > 0) {
+#         new_row[[col]] <- agg_values[[col]] / total_weight
+#       } else {
+#         new_row[[col]] <- NA
+#       }
+#     }
+#     
+#     # Add to our results
+#     weighted_results <- bind_rows(weighted_results, new_row)
+#   }
+# }
+# 
+# constituency_metrics_post <- constituency_metrics %>%
+#   filter(startsWith(constituency_id, "2008"))
+# 
+# # then add weighted results
+# constituency_metrics_ac08 <- bind_rows(constituency_metrics_post, weighted_results)
+# 
+# # then aggregate
 
 ### Merging with Shrug ExogVars
+# Elevation
+elev_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con07.csv")
+elev_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con08.csv")
+
+elev_1 <- elev_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+elev_2 <- elev_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+elev <- rbind(elev_1, elev_2) %>%
+  dplyr::select(constituency_id, elevation_mean)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(elev, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(elevation_mean))
+
+# Ruggedness
+rug_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con07.csv")
+rug_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con08.csv")
+
+rug_1 <- rug_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+rug_2 <- rug_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+rug <- rbind(rug_1, rug_2) %>%
+  dplyr::select(constituency_id, tri_mean)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(rug, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(tri_mean))
+
+# Nightlights
+dmsp_1 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con07.csv")
+dmsp_2 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con08.csv")
+
+dmsp_1 <- dmsp_1 %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+dmsp_2 <- dmsp_2 %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+dmsp <- rbind(dmsp_1, dmsp_2) %>%
+  dplyr::select(constituency_id, dmsp_mean_light_cal)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(dmsp, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(dmsp_mean_light_cal))
+
+# EC (2013)
+ec13_1 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con07.csv")
+ec13_2 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con08.csv")
+
+ec13_1 <- ec13_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec13_2 <- ec13_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec13 <- rbind(ec13_1, ec13_2) %>%
+  dplyr::select(constituency_id, ec13_emp_all, ec13_emp_manuf, ec13_count_all, ec13_emp_services)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(ec13, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(ec13_emp_all))
+
+# EC (2005)
+ec05_1 <- read.csv("Shrug Data/ec/shrug-ec05-csv/ec05_con07.csv")
+ec05_2 <- read.csv("Shrug Data/ec/shrug-ec05-csv/ec05_con08.csv")
+
+ec05_1 <- ec05_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec05_2 <- ec05_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec05 <- rbind(ec05_1, ec05_2) %>%
+  dplyr::select(constituency_id, ec05_emp_all, ec05_emp_manuf, ec05_count_all, ec05_emp_services)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(ec05, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(ec05_emp_all))
+
+# EC (1998)
+ec98_1 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con07.csv")
+ec98_2 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con08.csv")
+
+ec98_1 <- ec98_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec98_2 <- ec98_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec98 <- rbind(ec98_1, ec98_2) %>%
+  dplyr::select(constituency_id, ec98_emp_all, ec98_emp_manuf, ec98_count_all, ec98_emp_services)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(ec98, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(ec98_emp_all))
+
+# EC (1990)
+ec90_1 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con07.csv")
+ec90_2 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con08.csv")
+
+ec90_1 <- ec90_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec90_2 <- ec90_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec90 <- rbind(ec90_1, ec90_2) %>%
+  dplyr::select(constituency_id, ec90_emp_all, ec90_emp_manuf, ec90_count_all, ec90_emp_services)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(ec90, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(ec90_emp_all))
+
+# Forest Cover
+vcf_1 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con07.csv")
+vcf_2 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con08.csv")
+
+vcf_1 <- vcf_1 %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+vcf_2 <- vcf_2 %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+vcf <- rbind(vcf_1, vcf_2) %>%
+  dplyr::select(constituency_id, vcf_mean)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(vcf, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(vcf_mean))
+
+# Area
+popwt_1 <- read.csv("Shrug Data/pop weight/shrug-con07-wt-csv/con07_pop_area_key.csv")
+popwt_2 <- read.csv("Shrug Data/pop weight/shrug-con08-wt-csv/con08_pop_area_key.csv")
+
+popwt_1 <- popwt_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  rename(
+    land_area = con07_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt_2 <- popwt_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  rename(
+    land_area = con08_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt <- rbind(popwt_1, popwt_2) %>%
+  dplyr::select(constituency_id, land_area)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(popwt, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(land_area))
+
+# PC (2011) Abstract
+pc11_1 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con07.csv")
+pc11_2 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con08.csv")
+
+pc11_1 <- pc11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc11_2 <- pc11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc11 <- rbind(pc11_1, pc11_2) %>%
+  dplyr::select(constituency_id, pc11_pca_p_lit, pc11_pca_main_al_p, pc11_pca_tot_p,
+                pc11_pca_m_sc, pc11_pca_f_sc, pc11_pca_p_ill, pc11_pca_m_st, pc11_pca_f_st)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(pc11, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc11_pca_p_lit))
+
+# PC (2011) Town
+td11_1 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con07.csv")
+td11_2 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con08.csv")
+
+td11_1 <- td11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td11_2 <- td11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td11 <- rbind(td11_1, td11_2) %>%
+  dplyr::select(constituency_id, pc11_td_disp, pc11_td_primary_gov, pc11_td_el_dom)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(td11, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc11_td_el_dom))
+
+# PC (2001) Abstract
+pc01_1 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con07.csv")
+pc01_2 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con08.csv")
+
+pc01_1 <- pc01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc01_2 <- pc01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc01 <- rbind(pc01_1, pc01_2) %>%
+  dplyr::select(constituency_id, pc01_pca_p_lit, pc01_pca_main_al_p, pc01_pca_tot_p,
+                pc01_pca_m_sc, pc01_pca_f_sc, pc01_pca_p_ill, pc01_pca_m_st, pc01_pca_f_st)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(pc01, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc01_pca_p_lit))
+
+# PC (2001) Town
+td01_1 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con07.csv")
+td01_2 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con08.csv")
+
+td01_1 <- td01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td01_2 <- td01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td01 <- rbind(td01_1, td01_2) %>%
+  dplyr::select(constituency_id, pc01_td_health_ctr, pc01_td_primary, pc01_td_el_dom)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(td01, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc01_td_el_dom))
+
+# PC (1991) Abstract
+pc91_1 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con07.csv")
+pc91_2 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con08.csv")
+
+pc91_1 <- pc91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc91_2 <- pc91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc91 <- rbind(pc91_1, pc91_2) %>%
+  dplyr::select(constituency_id, pc91_pca_p_lit, pc91_pca_main_al_p, pc91_pca_tot_p,
+                pc91_pca_m_sc, pc91_pca_f_sc, pc91_pca_m_st, pc91_pca_f_st)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(pc91, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc91_pca_p_lit))
+
+# PC (1991) Town
+td91_1 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con07.csv")
+td91_2 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con08.csv")
+
+td91_1 <- td91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td91_2 <- td91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td91 <- rbind(td91_1, td91_2) %>%
+  dplyr::select(constituency_id, pc91_td_health_ctr, pc91_td_primary, pc91_td_el_dom)
+
+constituency_metrics <- constituency_metrics %>%
+  left_join(td91, by = "constituency_id")
+
+which <- constituency_metrics %>%
+  filter(is.na(pc91_td_el_dom))
+
+### Rural simple
+unique_ac07_shrid <- shrid_07 %>%
+  distinct(ac07_id)
+
+unique_ac08_shrid <- shrid_08 %>%
+  distinct(ac08_id)
+
+rural_constituencies <- c(unique_ac07_shrid$ac07_id, unique_ac08_shrid$ac08_id)
+
+constituency_metrics <- constituency_metrics %>%
+  mutate(Rural = ifelse(constituency_id %in% rural_constituencies, 1, 0))
 
 ### Prepping and cleaning the final dataset
+# adding dummy for post_delim
+constituency_metrics <- constituency_metrics %>%
+  mutate(pre_delim = ifelse(startsWith(constituency_id, "2007"), 1, 0))
+
+constituency_metrics <- constituency_metrics %>%
+  mutate(sc_m = pc11_pca_m_sc/pc11_pca_tot_p, 
+         sc_f = pc11_pca_f_sc/pc11_pca_tot_p, 
+         st_m = pc11_pca_m_st/pc11_pca_tot_p, 
+         st_f = pc11_pca_f_st/pc11_pca_tot_p, 
+         lit = pc11_pca_p_lit/pc11_pca_tot_p, 
+         illit = pc11_pca_p_ill/pc11_pca_tot_p)
+
+### the same for constituency_metrics_2
+### Merging with Shrug ExogVars
+# Elevation
+elev_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con07.csv")
+elev_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con08.csv")
+
+elev_1 <- elev_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+elev_2 <- elev_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+elev <- rbind(elev_1, elev_2) %>%
+  dplyr::select(constituency_id, elevation_mean)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(elev, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(elevation_mean))
+
+# Ruggedness
+rug_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con07.csv")
+rug_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con08.csv")
+
+rug_1 <- rug_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+rug_2 <- rug_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+rug <- rbind(rug_1, rug_2) %>%
+  dplyr::select(constituency_id, tri_mean)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(rug, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(tri_mean))
+
+# Nightlights
+dmsp_1 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con07.csv")
+dmsp_2 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con08.csv")
+
+dmsp_1 <- dmsp_1 %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+dmsp_2 <- dmsp_2 %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+dmsp <- rbind(dmsp_1, dmsp_2) %>%
+  dplyr::select(constituency_id, dmsp_mean_light_cal)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(dmsp, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(dmsp_mean_light_cal))
+
+# EC (2013)
+ec13_1 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con07.csv")
+ec13_2 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con08.csv")
+
+ec13_1 <- ec13_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec13_2 <- ec13_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec13 <- rbind(ec13_1, ec13_2) %>%
+  dplyr::select(constituency_id, ec13_emp_all, ec13_emp_manuf, ec13_count_all, ec13_emp_services)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(ec13, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(ec13_emp_all))
+
+# EC (2005)
+ec05_1 <- read.csv("Shrug Data/ec/shrug-ec05-csv/ec05_con07.csv")
+ec05_2 <- read.csv("Shrug Data/ec/shrug-ec05-csv/ec05_con08.csv")
+
+ec05_1 <- ec05_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec05_2 <- ec05_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec05 <- rbind(ec05_1, ec05_2) %>%
+  dplyr::select(constituency_id, ec05_emp_all, ec05_emp_manuf, ec05_count_all, ec05_emp_services)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(ec05, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(ec05_emp_all))
+
+# EC (1998)
+ec98_1 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con07.csv")
+ec98_2 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con08.csv")
+
+ec98_1 <- ec98_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec98_2 <- ec98_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec98 <- rbind(ec98_1, ec98_2) %>%
+  dplyr::select(constituency_id, ec98_emp_all, ec98_emp_manuf, ec98_count_all, ec98_emp_services)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(ec98, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(ec98_emp_all))
+
+# EC (1990)
+ec90_1 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con07.csv")
+ec90_2 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con08.csv")
+
+ec90_1 <- ec90_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec90_2 <- ec90_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec90 <- rbind(ec90_1, ec90_2) %>%
+  dplyr::select(constituency_id, ec90_emp_all, ec90_emp_manuf, ec90_count_all, ec90_emp_services)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(ec90, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(ec90_emp_all))
+
+# Forest Cover
+vcf_1 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con07.csv")
+vcf_2 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con08.csv")
+
+vcf_1 <- vcf_1 %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+vcf_2 <- vcf_2 %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+vcf <- rbind(vcf_1, vcf_2) %>%
+  dplyr::select(constituency_id, vcf_mean)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(vcf, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(vcf_mean))
+
+# Area
+popwt_1 <- read.csv("Shrug Data/pop weight/shrug-con07-wt-csv/con07_pop_area_key.csv")
+popwt_2 <- read.csv("Shrug Data/pop weight/shrug-con08-wt-csv/con08_pop_area_key.csv")
+
+popwt_1 <- popwt_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  rename(
+    land_area = con07_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt_2 <- popwt_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  rename(
+    land_area = con08_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt <- rbind(popwt_1, popwt_2) %>%
+  dplyr::select(constituency_id, land_area)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(popwt, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(land_area))
+
+# PC (2011) Abstract
+pc11_1 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con07.csv")
+pc11_2 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con08.csv")
+
+pc11_1 <- pc11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc11_2 <- pc11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc11 <- rbind(pc11_1, pc11_2) %>%
+  dplyr::select(constituency_id, pc11_pca_p_lit, pc11_pca_main_al_p, pc11_pca_tot_p,
+                pc11_pca_m_sc, pc11_pca_f_sc, pc11_pca_p_ill, pc11_pca_m_st, pc11_pca_f_st)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(pc11, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc11_pca_p_lit))
+
+# PC (2011) Town
+td11_1 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con07.csv")
+td11_2 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con08.csv")
+
+td11_1 <- td11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td11_2 <- td11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td11 <- rbind(td11_1, td11_2) %>%
+  dplyr::select(constituency_id, pc11_td_disp, pc11_td_primary_gov, pc11_td_el_dom)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(td11, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc11_td_el_dom))
+
+# PC (2001) Abstract
+pc01_1 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con07.csv")
+pc01_2 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con08.csv")
+
+pc01_1 <- pc01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc01_2 <- pc01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc01 <- rbind(pc01_1, pc01_2) %>%
+  dplyr::select(constituency_id, pc01_pca_p_lit, pc01_pca_main_al_p, pc01_pca_tot_p,
+                pc01_pca_m_sc, pc01_pca_f_sc, pc01_pca_p_ill, pc01_pca_m_st, pc01_pca_f_st)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(pc01, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc01_pca_p_lit))
+
+# PC (2001) Town
+td01_1 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con07.csv")
+td01_2 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con08.csv")
+
+td01_1 <- td01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td01_2 <- td01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td01 <- rbind(td01_1, td01_2) %>%
+  dplyr::select(constituency_id, pc01_td_health_ctr, pc01_td_primary, pc01_td_el_dom)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(td01, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc01_td_el_dom))
+
+# PC (1991) Abstract
+pc91_1 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con07.csv")
+pc91_2 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con08.csv")
+
+pc91_1 <- pc91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc91_2 <- pc91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc91 <- rbind(pc91_1, pc91_2) %>%
+  dplyr::select(constituency_id, pc91_pca_p_lit, pc91_pca_main_al_p, pc91_pca_tot_p,
+                pc91_pca_m_sc, pc91_pca_f_sc, pc91_pca_m_st, pc91_pca_f_st)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(pc91, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc91_pca_p_lit))
+
+# PC (1991) Town
+td91_1 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con07.csv")
+td91_2 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con08.csv")
+
+td91_1 <- td91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td91_2 <- td91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td91 <- rbind(td91_1, td91_2) %>%
+  dplyr::select(constituency_id, pc91_td_health_ctr, pc91_td_primary, pc91_td_el_dom)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  left_join(td91, by = "constituency_id")
+
+which <- constituency_metrics_2 %>%
+  filter(is.na(pc91_td_el_dom))
+
+### Rural simple
+unique_ac07_shrid <- shrid_07 %>%
+  distinct(ac07_id)
+
+unique_ac08_shrid <- shrid_08 %>%
+  distinct(ac08_id)
+
+rural_constituencies <- c(unique_ac07_shrid$ac07_id, unique_ac08_shrid$ac08_id)
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  mutate(Rural = ifelse(constituency_id %in% rural_constituencies, 1, 0))
+
+### Prepping and cleaning the final dataset
+# adding dummy for post_delim
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  mutate(pre_delim = ifelse(startsWith(constituency_id, "2007"), 1, 0))
+
+constituency_metrics_2 <- constituency_metrics_2 %>%
+  mutate(sc_m = pc11_pca_m_sc/pc11_pca_tot_p, 
+         sc_f = pc11_pca_f_sc/pc11_pca_tot_p, 
+         st_m = pc11_pca_m_st/pc11_pca_tot_p, 
+         st_f = pc11_pca_f_st/pc11_pca_tot_p, 
+         lit = pc11_pca_p_lit/pc11_pca_tot_p, 
+         illit = pc11_pca_p_ill/pc11_pca_tot_p)
+
+### the same for 1974 to 1994 ###
+### Merging with Shrug ExogVars
+# Elevation
+elev_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con07.csv")
+elev_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con08.csv")
+
+elev_1 <- elev_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+elev_2 <- elev_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+elev <- rbind(elev_1, elev_2) %>%
+  dplyr::select(constituency_id, elevation_mean)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(elev, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(elevation_mean))
+
+# Ruggedness
+rug_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con07.csv")
+rug_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con08.csv")
+
+rug_1 <- rug_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+rug_2 <- rug_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+rug <- rbind(rug_1, rug_2) %>%
+  dplyr::select(constituency_id, tri_mean)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(rug, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(tri_mean))
+
+# Nightlights
+dmsp_1 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con07.csv")
+dmsp_2 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con08.csv")
+
+dmsp_1 <- dmsp_1 %>%
+  filter(year == 1994) %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+dmsp_2 <- dmsp_2 %>%
+  filter(year == 1994) %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+dmsp <- rbind(dmsp_1, dmsp_2) %>%
+  dplyr::select(constituency_id, dmsp_mean_light_cal)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(dmsp, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(dmsp_mean_light_cal))
+
+# EC (1990)
+ec90_1 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con07.csv")
+ec90_2 <- read.csv("Shrug Data/ec/shrug-ec90-csv/ec90_con08.csv")
+
+ec90_1 <- ec90_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec90_2 <- ec90_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec90 <- rbind(ec90_1, ec90_2) %>%
+  dplyr::select(constituency_id, ec90_emp_all, ec90_emp_manuf, ec90_count_all, ec90_emp_services)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(ec90, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(ec90_emp_all))
+
+# Area
+popwt_1 <- read.csv("Shrug Data/pop weight/shrug-con07-wt-csv/con07_pop_area_key.csv")
+popwt_2 <- read.csv("Shrug Data/pop weight/shrug-con08-wt-csv/con08_pop_area_key.csv")
+
+popwt_1 <- popwt_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  rename(
+    land_area = con07_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt_2 <- popwt_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  rename(
+    land_area = con08_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt <- rbind(popwt_1, popwt_2) %>%
+  dplyr::select(constituency_id, land_area)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(popwt, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(land_area))
+
+# PC (1991) Abstract
+pc91_1 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con07.csv")
+pc91_2 <- read.csv("Shrug Data/pc/shrug-pca91-csv/pc91_pca_clean_con08.csv")
+
+pc91_1 <- pc91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc91_2 <- pc91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc91 <- rbind(pc91_1, pc91_2) %>%
+  dplyr::select(constituency_id, pc91_pca_p_lit, pc91_pca_main_al_p, pc91_pca_tot_p,
+                pc91_pca_m_sc, pc91_pca_f_sc, pc91_pca_m_st, pc91_pca_f_st)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(pc91, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(pc91_pca_p_lit))
+
+# PC (1991) Town
+td91_1 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con07.csv")
+td91_2 <- read.csv("Shrug Data/pc/shrug-td91-csv/pc91_td_clean_con08.csv")
+
+td91_1 <- td91_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td91_2 <- td91_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td91 <- rbind(td91_1, td91_2) %>%
+  dplyr::select(constituency_id, pc91_td_health_ctr, pc91_td_primary, pc91_td_el_dom)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  left_join(td91, by = "constituency_id")
+
+which <- constituency_metrics_74_94 %>%
+  filter(is.na(pc91_td_el_dom))
+
+### Rural simple
+unique_ac07_shrid <- shrid_07 %>%
+  distinct(ac07_id)
+
+unique_ac08_shrid <- shrid_08 %>%
+  distinct(ac08_id)
+
+rural_constituencies <- c(unique_ac07_shrid$ac07_id, unique_ac08_shrid$ac08_id)
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  mutate(Rural = ifelse(constituency_id %in% rural_constituencies, 1, 0))
+
+### Prepping and cleaning the final dataset
+# adding dummy for post_delim
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  mutate(pre_delim = ifelse(startsWith(constituency_id, "2007"), 1, 0))
+
+constituency_metrics_74_94 <- constituency_metrics_74_94 %>%
+  mutate(sc_m = pc91_pca_m_sc/pc91_pca_tot_p, 
+         sc_f = pc91_pca_f_sc/pc91_pca_tot_p, 
+         st_m = pc91_pca_m_st/pc91_pca_tot_p, 
+         st_f = pc91_pca_f_st/pc91_pca_tot_p, 
+         lit = pc91_pca_p_lit/pc91_pca_tot_p, 
+         lit = pc91_pca_p_lit/pc91_pca_tot_p)
+
+### same for 1995 to 2004
+### Merging with Shrug ExogVars
+# Elevation
+elev_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con07.csv")
+elev_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con08.csv")
+
+elev_1 <- elev_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+elev_2 <- elev_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+elev <- rbind(elev_1, elev_2) %>%
+  dplyr::select(constituency_id, elevation_mean)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(elev, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(elevation_mean))
+
+# Ruggedness
+rug_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con07.csv")
+rug_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con08.csv")
+
+rug_1 <- rug_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+rug_2 <- rug_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+rug <- rbind(rug_1, rug_2) %>%
+  dplyr::select(constituency_id, tri_mean)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(rug, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(tri_mean))
+
+# Nightlights
+dmsp_1 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con07.csv")
+dmsp_2 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con08.csv")
+
+dmsp_1 <- dmsp_1 %>%
+  filter(year >= 1994 & year <= 2004) %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+dmsp_2 <- dmsp_2 %>%
+  filter(year >= 1994 & year <= 2004) %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+dmsp <- rbind(dmsp_1, dmsp_2) %>%
+  dplyr::select(constituency_id, dmsp_mean_light_cal)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(dmsp, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(dmsp_mean_light_cal))
+
+# EC (1998)
+ec98_1 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con07.csv")
+ec98_2 <- read.csv("Shrug Data/ec/shrug-ec98-csv/ec98_con08.csv")
+
+ec98_1 <- ec98_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec98_2 <- ec98_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec98 <- rbind(ec98_1, ec98_2) %>%
+  dplyr::select(constituency_id, ec98_emp_all, ec98_emp_manuf, ec98_count_all, ec98_emp_services)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(ec98, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(ec98_emp_all))
+
+# Forest Cover
+vcf_1 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con07.csv")
+vcf_2 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con08.csv")
+
+vcf_1 <- vcf_1 %>%
+  filter(year >= 1995 & year <= 2004) %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+vcf_2 <- vcf_2 %>%
+  filter(year >= 1995 & year <= 2004) %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+vcf <- rbind(vcf_1, vcf_2) %>%
+  dplyr::select(constituency_id, vcf_mean)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(vcf, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(vcf_mean))
+
+# Area
+popwt_1 <- read.csv("Shrug Data/pop weight/shrug-con07-wt-csv/con07_pop_area_key.csv")
+popwt_2 <- read.csv("Shrug Data/pop weight/shrug-con08-wt-csv/con08_pop_area_key.csv")
+
+popwt_1 <- popwt_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  rename(
+    land_area = con07_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt_2 <- popwt_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  rename(
+    land_area = con08_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt <- rbind(popwt_1, popwt_2) %>%
+  dplyr::select(constituency_id, land_area)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(popwt, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(land_area))
+
+# PC (2001) Abstract
+pc01_1 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con07.csv")
+pc01_2 <- read.csv("Shrug Data/pc/shrug-pca01-csv/pc01_pca_clean_con08.csv")
+
+pc01_1 <- pc01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc01_2 <- pc01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc01 <- rbind(pc01_1, pc01_2) %>%
+  dplyr::select(constituency_id, pc01_pca_p_lit, pc01_pca_main_al_p, pc01_pca_tot_p,
+                pc01_pca_m_sc, pc01_pca_f_sc, pc01_pca_p_ill, pc01_pca_m_st, pc01_pca_f_st)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(pc01, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(pc01_pca_p_lit))
+
+# PC (2001) Town
+td01_1 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con07.csv")
+td01_2 <- read.csv("Shrug Data/pc/shrug-td01-csv/pc01_td_clean_con08.csv")
+
+td01_1 <- td01_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td01_2 <- td01_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td01 <- rbind(td01_1, td01_2) %>%
+  dplyr::select(constituency_id, pc01_td_health_ctr, pc01_td_primary, pc01_td_el_dom)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  left_join(td01, by = "constituency_id")
+
+which <- constituency_metrics_95_04 %>%
+  filter(is.na(pc01_td_el_dom))
+
+### Rural simple
+unique_ac07_shrid <- shrid_07 %>%
+  distinct(ac07_id)
+
+unique_ac08_shrid <- shrid_08 %>%
+  distinct(ac08_id)
+
+rural_constituencies <- c(unique_ac07_shrid$ac07_id, unique_ac08_shrid$ac08_id)
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  mutate(Rural = ifelse(constituency_id %in% rural_constituencies, 1, 0))
+
+### Prepping and cleaning the final dataset
+# adding dummy for post_delim
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  mutate(pre_delim = ifelse(startsWith(constituency_id, "2007"), 1, 0))
+
+constituency_metrics_95_04 <- constituency_metrics_95_04 %>%
+  mutate(sc_m = pc01_pca_m_sc/pc01_pca_tot_p, 
+         sc_f = pc01_pca_f_sc/pc01_pca_tot_p, 
+         st_m = pc01_pca_m_st/pc01_pca_tot_p, 
+         st_f = pc01_pca_f_st/pc01_pca_tot_p, 
+         lit = pc01_pca_p_lit/pc01_pca_tot_p, 
+         illit = pc01_pca_p_ill/pc01_pca_tot_p)
+
+### same for 2005 to 2023
+### Merging with Shrug ExogVars
+# Elevation
+elev_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con07.csv")
+elev_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-elevation-csv/elevation_con08.csv")
+
+elev_1 <- elev_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+elev_2 <- elev_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+elev <- rbind(elev_1, elev_2) %>%
+  dplyr::select(constituency_id, elevation_mean)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(elev, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(elevation_mean))
+
+# Ruggedness
+rug_1 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con07.csv")
+rug_2 <- read.csv("Shrug Data/elevation ruggedness/shrug-rugged-csv/tri_con08.csv")
+
+rug_1 <- rug_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+rug_2 <- rug_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+rug <- rbind(rug_1, rug_2) %>%
+  dplyr::select(constituency_id, tri_mean)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(rug, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(tri_mean))
+
+# Nightlights
+dmsp_1 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con07.csv")
+dmsp_2 <- read.csv("Shrug Data/night lights/shrug-dmsp-csv/dmsp_con08.csv")
+
+dmsp_1 <- dmsp_1 %>%
+  filter(year >= 2005 & year <= 2023) %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+dmsp_2 <- dmsp_2 %>%
+  filter(year >= 2005 & year <= 2023) %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    dmsp_mean_light_cal = mean(dmsp_mean_light_cal, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+dmsp <- rbind(dmsp_1, dmsp_2) %>%
+  dplyr::select(constituency_id, dmsp_mean_light_cal)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(dmsp, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(dmsp_mean_light_cal))
+
+# EC (2013)
+ec13_1 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con07.csv")
+ec13_2 <- read.csv("Shrug Data/ec/shrug-ec13-csv/ec13_con08.csv")
+
+ec13_1 <- ec13_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+ec13_2 <- ec13_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+ec13 <- rbind(ec13_1, ec13_2) %>%
+  dplyr::select(constituency_id, ec13_emp_all, ec13_emp_manuf, ec13_count_all, ec13_emp_services)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(ec13, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(ec13_emp_all))
+
+# Forest Cover
+vcf_1 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con07.csv")
+vcf_2 <- read.csv("Shrug Data/forest cover/shrug-vcf-csv/vcf_con08.csv")
+
+vcf_1 <- vcf_1 %>%
+  filter(year >= 2005 & year <= 2023) %>%
+  group_by(ac07_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+vcf_2 <- vcf_2 %>%
+  filter(year >= 2005 & year <= 2023) %>%
+  group_by(ac08_id) %>%
+  dplyr::summarize(
+    vcf_mean = mean(vcf_mean, na.rm = TRUE)
+  ) %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+vcf <- rbind(vcf_1, vcf_2) %>%
+  dplyr::select(constituency_id, vcf_mean)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(vcf, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(vcf_mean))
+
+# Area
+popwt_1 <- read.csv("Shrug Data/pop weight/shrug-con07-wt-csv/con07_pop_area_key.csv")
+popwt_2 <- read.csv("Shrug Data/pop weight/shrug-con08-wt-csv/con08_pop_area_key.csv")
+
+popwt_1 <- popwt_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  rename(
+    land_area = con07_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt_2 <- popwt_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  rename(
+    land_area = con08_pc01_pca_tot_p
+  ) %>%
+  dplyr::select(constituency_id, land_area)
+
+popwt <- rbind(popwt_1, popwt_2) %>%
+  dplyr::select(constituency_id, land_area)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(popwt, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(land_area))
+
+# PC (2011) Abstract
+pc11_1 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con07.csv")
+pc11_2 <- read.csv("Shrug Data/pc/shrug-pca11-csv/pc11_pca_clean_con08.csv")
+
+pc11_1 <- pc11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+pc11_2 <- pc11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+pc11 <- rbind(pc11_1, pc11_2) %>%
+  dplyr::select(constituency_id, pc11_pca_p_lit, pc11_pca_main_al_p, pc11_pca_tot_p,
+                pc11_pca_m_sc, pc11_pca_f_sc, pc11_pca_p_ill, pc11_pca_m_st, pc11_pca_f_st)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(pc11, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(pc11_pca_p_lit))
+
+# PC (2011) Town
+td11_1 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con07.csv")
+td11_2 <- read.csv("Shrug Data/pc/shrug-td11-csv/pc11_td_clean_con08.csv")
+
+td11_1 <- td11_1 %>%
+  left_join(ac07_name_key, by = "ac07_id") %>%
+  rename(
+    constituency_id = ac07_id
+  ) %>%
+  dplyr::select(-ac07_name)
+
+td11_2 <- td11_2 %>%
+  left_join(ac08_name_key, by = "ac08_id") %>%
+  rename(
+    constituency_id = ac08_id
+  ) %>%
+  dplyr::select(-ac08_name)
+
+td11 <- rbind(td11_1, td11_2) %>%
+  dplyr::select(constituency_id, pc11_td_disp, pc11_td_primary_gov, pc11_td_el_dom)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  left_join(td11, by = "constituency_id")
+
+which <- constituency_metrics_05_23 %>%
+  filter(is.na(pc11_td_el_dom))
+
+### Rural simple
+unique_ac07_shrid <- shrid_07 %>%
+  distinct(ac07_id)
+
+unique_ac08_shrid <- shrid_08 %>%
+  distinct(ac08_id)
+
+rural_constituencies <- c(unique_ac07_shrid$ac07_id, unique_ac08_shrid$ac08_id)
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  mutate(Rural = ifelse(constituency_id %in% rural_constituencies, 1, 0))
+
+### Prepping and cleaning the final dataset
+# adding dummy for post_delim
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  mutate(pre_delim = ifelse(startsWith(constituency_id, "2007"), 1, 0))
+
+constituency_metrics_05_23 <- constituency_metrics_05_23 %>%
+  mutate(sc_m = pc11_pca_m_sc/pc11_pca_tot_p, 
+         sc_f = pc11_pca_f_sc/pc11_pca_tot_p, 
+         st_m = pc11_pca_m_st/pc11_pca_tot_p, 
+         st_f = pc11_pca_f_st/pc11_pca_tot_p, 
+         lit = pc11_pca_p_lit/pc11_pca_tot_p, 
+         illit = pc11_pca_p_ill/pc11_pca_tot_p)
 
 ### Saving
+write.csv(constituency_metrics, "Cleaned Data/constituency_metrics_w_exogvars.csv")
+write.csv(constituency_metrics_2, "Cleaned Data/constituency_metrics_w_exogvars_filtered.csv")
+write.csv(constituency_metrics_74_94, "Cleaned Data/constituency_metrics_w_exogvars_74_94.csv")
+write.csv(constituency_metrics_95_04, "Cleaned Data/constituency_metrics_w_exogvars_95_04.csv")
+write.csv(constituency_metrics_05_23, "Cleaned Data/constituency_metrics_w_exogvars_05_23.csv")
+
+### Trial Coef Plot
+# constituency_metrics_2_post_delim
+constituency_metrics_2_post <- constituency_metrics_2 %>%
+  filter(startsWith(constituency_id, "2008"))
+
+constituency_metrics_2_pre <- constituency_metrics_2 %>%
+  filter(startsWith(constituency_id, "2007"))
+
+regressors <- c(
+  "elevation_mean", "tri_mean", "dmsp_mean_light_cal",
+  "vcf_mean", "land_area",
+  "sc_m", "sc_f", "st_m", "st_f", "illit", 
+  "ec13_emp_all", "ec13_count_all", "ec13_emp_manuf", "ec13_emp_services",
+  "pc11_td_disp", "pc11_td_primary_gov", "pc11_td_el_dom", "Rural"
+)
+
+regressor_labels <- c(
+  "elevation_mean" = "Mean Elevation",
+  "tri_mean" = "Mean Ruggedness",
+  "dmsp_mean_light_cal" = "Mean Night Lights (< 2011)",
+  "land_area" = "Land Area",
+  "vcf_mean" = "Vegetation Cover (2010)",
+  "sc_m" = "SC Population (Male) % (2011) ",
+  "sc_f" = "SC Population (Female) % (2011)",
+  "st_m" = "ST Population (Male) % (2011)",
+  "st_f" = "ST Population (Female) % (2011)",
+  "illit" = "Illiterate Population % (2011)",
+  "ec13_emp_all" = "Total Employment (2013)",
+  "ec13_count_all" = "Total Firms (2013)",
+  "ec13_emp_manuf" = "Manufacturing Employment (2013)",
+  "ec13_emp_services" = "Services Employment (2013)",
+  "pc11_td_disp" = "Dispensaries (2011)",
+  "pc11_td_primary_gov" = "Primary Govt Schools (2011)",
+  "pc11_td_el_dom" = "Hours of Power Supply during Summer (2011)", 
+  "Rural" = "Rural Constituency Dummy Acc. shrid Coverage"
+)
+
+outcomes <- c("avg_decoy_candidates", "avg_decoy_share", "decoy_vote_share")  # Replace with your actual outcome variables
+outcome_labels <- c(
+  "avg_decoy_candidates" = "Average No. Decoys Per Election",
+  "avg_decoy_share" = "Average % of Decoys Per Election ",
+  "decoy_vote_share" = "Average Voteshare for Decoys"
+)
+
+# create standardized versions of outcome variables
+for(outcome in outcomes) {
+  constituency_metrics_2[[paste0("z_", outcome)]] <- scale(constituency_metrics_2[[outcome]])
+}
+
+# run separate regressions for each regressor and outcome
+model_results <- list()
+
+for(outcome in outcomes) {
+  z_outcome <- paste0("z_", outcome)
+  
+  # run a separate regression for each regressor
+  for(reg in regressors) {
+    # create formula for individual regressor
+    formula_str <- paste(z_outcome, "~", reg, "+ pre_delim")
+    
+    # Run the model
+    model <- feols(
+      as.formula(formula_str),
+      data = constituency_metrics_2,
+      cluster = "constituency_id"
+    )
+    
+    # extract coefficient and standard error
+    if(reg %in% names(coef(model))) {
+      coef_val <- coef(model)[reg]
+      se_val <- sqrt(vcov(model)[reg, reg])
+      
+      # store the results
+      model_results[[paste0(outcome, "_", reg)]] <- data.frame(
+        outcome = outcome,
+        regressor = reg,
+        estimate = coef_val,
+        std.error = se_val,
+        conf_low_90 = coef_val - 1.645 * se_val,
+        conf_high_90 = coef_val + 1.645 * se_val,
+        conf_low_95 = coef_val - 1.96 * se_val,
+        conf_high_95 = coef_val + 1.96 * se_val,
+        conf_low_99 = coef_val - 2.576 * se_val,
+        conf_high_99 = coef_val + 2.576 * se_val
+      )
+    }
+  }
+}
+
+# combine all results
+plot_data <- do.call(rbind, model_results)
+
+# add labels
+plot_data$outcome_label <- outcome_labels[plot_data$outcome]
+plot_data$regressor_label <- regressor_labels[plot_data$regressor]
+
+# convert to factors for ordering
+plot_data$outcome_label <- factor(plot_data$outcome_label,
+                                  levels = outcome_labels,
+                                  ordered = TRUE)
+plot_data$regressor_label <- factor(plot_data$regressor_label,
+                                    levels = rev(regressor_labels[regressors]),
+                                    ordered = TRUE)
+
+# show all outcomes on same chart
+ggplot(plot_data, aes(y = regressor_label, x = estimate, color = outcome_label)) +
+  # add reference line
+  geom_vline(xintercept = 0, linetype = 2, color = "black") +
+  
+  # add CIs
+  geom_linerange(aes(xmin = conf_low_95, xmax = conf_high_95),
+                 linewidth = 1, alpha = 0.7,
+                 position = position_dodge(width = 0.5)) +
+  
+  # add point estimates
+  geom_point(size = 2, position = position_dodge(width = 0.5)) +
+  
+  # format
+  theme_bw() +
+  labs(x = "Standardized Coefficient (Standard Deviations)",
+       y = NULL,
+       color = "Outcome",
+       shape = "Outcome",
+       title = "Coeff Plot: Decoy Vars on Constituency Characteristics") +
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_text(size = 9),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank()
+  ) +
+  scale_color_brewer(palette = "Set1")
+
+# group the regressors
+regressor_groups <- list(
+  "Geographic" = c("Mean Elevation", "Mean Ruggedness", "Vegetation Cover (2010)", "Land Area"),
+  "Demographics" = c("SC Population (Male) % (2011) ", "SC Population (Female) % (2011)",
+                     "ST Population (Male) % (2011)", "ST Population (Female) % (2011)",
+                     "Illiterate Population % (2011)", "Rural Constituency Dummy Acc. shrid Coverage"),
+  "Economy" = c("Total Employment (2013)", "Total Firms (2013)", 
+                "Manufacturing Employment (2013)", "Services Employment (2013)"),
+  "Infrastructure" = c("Dispensaries (2011)", "Primary Govt Schools (2011)", 
+                       "Hours of Power Supply during Summer (2011)", "Mean Night Lights (< 2011)")
+)
+
+# add group column to plot_data
+plot_data$group <- NA
+for (group_name in names(regressor_groups)) {
+  plot_data$group[plot_data$regressor_label %in% regressor_groups[[group_name]]] <- group_name
+}
+
+# convert group to factor with specific order
+plot_data$group <- factor(plot_data$group, 
+                          levels = names(regressor_groups))
+
+# now plot with groups
+ggplot(plot_data, aes(y = regressor_label, x = estimate, 
+                      color = outcome_label)) +
+  # add reference line
+  geom_vline(xintercept = 0, linetype = 2, color = "black") +
+  
+  # add CIs for 95%
+  geom_linerange(aes(xmin = conf_low_95, xmax = conf_high_95),
+                 linewidth = 1, alpha = 0.7,
+                 position = position_dodge(width = 0.7)) +
+  
+  # add point estimates
+  geom_point(size = 2, position = position_dodge(width = 0.7)) +
+  
+  # grp by category
+  facet_grid(group ~ ., scales = "free_y", space = "free_y") +
+  
+  # format
+  theme_bw() +
+  labs(x = "Standardized Coefficient (Standard Deviations)",
+       y = NULL,
+       color = "Outcome",
+       shape = "Outcome",
+       title = "Coefficient Plot by Regressor Category") +
+  theme(
+    legend.position = "bottom",
+    legend.margin = margin(t = 10, r = 0, b = 0, l = 0),
+    legend.box.margin = margin(t = 0, r = 0, b = 10, l = 0),
+    axis.text.y = element_text(size = 10),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(face = "bold")
+  ) +
+  guides(color = guide_legend(nrow = 3)) +  # force legend to use 2 rows
+  scale_color_brewer(palette = "Set1")
+
 
 
