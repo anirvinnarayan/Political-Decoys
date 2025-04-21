@@ -58,7 +58,7 @@ sys.path.append("masala-merge-master/")
 from lev import levenshtein
 ')
 result_list <- readRDS("partial_results_list.rds")
-
+candidate_pairs_CLEA <- read.csv("Cleaned Data/candidate_pairs_lv_jw_ngram_masala_dblmet_CLEA.csv")
 
 ### Cleaning
 # what's up with this dataset?
@@ -203,6 +203,9 @@ clea_data_filtered <- clea_data_filtered %>%
   group_by(ctr, yr, mn, cst_n, id) %>%
   filter(n() < 50) %>%
   ungroup()
+
+# save this
+write_csv(clea_data_filtered, "Cleaned Data/CLEA_cleaned.csv")
 
 unique_elections_india <- clea_data_filtered %>%
   filter(ctr_n == "India") %>%

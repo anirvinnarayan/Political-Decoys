@@ -21,7 +21,7 @@ pacman::p_load(
   reticulate,
   sf,
   scales,
-  rnaturalearth, 
+  rnaturalearth, ``
   stringr, 
   lwgeom,
   stringdist,
@@ -114,7 +114,7 @@ unique_elections <- all_states_elections %>%
   dplyr::select(Year, State_Name, Constituency_Name, Election_Type, Assembly_No) %>%
   distinct()
 
-### String Similarity Calculation Formula
+### String Similarity Calculation Formulae
 
 # 1. Levenshtein
 # function to calculate normalized lv score

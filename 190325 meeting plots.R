@@ -264,7 +264,6 @@ mp_95th <- quantile(candidate_pairs$Metaphone_Similarity, 0.95, na.rm = TRUE)
 mas_95th <- quantile(candidate_pairs$Masala_Similarity, 0.95, na.rm = TRUE)
 ng_95th <- quantile(candidate_pairs$NGram_Similarity, 0.95, na.rm = TRUE)
 
-
 candidate_pairs <- candidate_pairs %>%
   mutate(is_decoy = ifelse(
     Levenshtein_Similarity > lv_99th & 
