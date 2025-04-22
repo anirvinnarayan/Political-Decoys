@@ -1188,6 +1188,14 @@ analyze_decoys_at_threshold <- function(candidate_pairs_data, percentile, method
 
 percentiles <- seq(0.974, 1.000, by = 0.001)
 
+# if need to load
+sensitivity_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/sensitivity_results.rds")
+lv_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/lv_results.rds")
+jw_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/jw_results.rds")
+ng_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/ng_results.rds")
+mp_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/mp_results.rds")
+mas_results <- readRDS("sensitivity_analysis_results/clea_no_fusion_w_ind/mas_results.rds")
+
 # run the analysis for all percentiles (using purrr's map function)
 sensitivity_results <- map(percentiles, ~analyze_decoys_at_threshold(
   candidate_pairs_CLEA_cleaned, .x, method = "strict", lower_percentile = 0.974))
@@ -2169,6 +2177,12 @@ ggsave(
 
 #### Candidate Level Regressions ####
 ## Summary Statistics
+# make minor minor decoys not decoys
+candidate_level_with_WDI_minor_2 <- candidate_level_with_WDI_minor %>%
+  mutate(
+    is_decoy = ifelse(decoy_relationships == "minor-minor", FALSE, )
+  )
+
 str(candidate_level_with_WDI_minor)
 
 summary_stats <- candidate_level_with_WDI_minor %>%
@@ -2279,6 +2293,22 @@ candidate_level_with_WDI_minor <- candidate_level_with_WDI_minor %>%
     has_common_component_bin = ifelse(has_common_component == TRUE, 1, 0), 
     is_decoy_bin = ifelse(is_decoy == TRUE, 1, 0)
   )
+
+candidate_level_with_WDI_minor_2 <- candidate_level_with_WDI_minor_2 %>%
+  mutate(
+    has_common_component_bin = ifelse(has_common_component == TRUE, 1, 0), 
+    is_decoy_bin = ifelse(is_decoy == TRUE, 1, 0)
+  )
+
+reg_lpm <- feols(
+  is_decoy ~ GE.PER.RNK + RL.PER.RNK + PV.PER.RNK + NY.GDP.PCAP.KD + 
+    SP.RUR.TOTL.ZS + SL.TLF.ACTI.1524.ZS + NY.GDP.DEFL.KD.ZG +
+    MS.MIL.XPND.ZS + GC.TAX.TOTL.GD.ZS + SE.XPD.TOTL.GD.ZS +
+    EG.ELC.ACCS.ZS + name_length + has_common_component_bin + name_length_z_score | Country_Name + Year,
+  data = candidate_level_with_WDI_minor, 
+  cluster = "constituency_state_country"
+)
+reg_lpm
 
 # Define the regression models with different Fixed Effects specifications
 reg_specs <- list(
