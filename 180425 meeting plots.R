@@ -365,6 +365,17 @@ decoy_by_pair_type <- candidate_pairs %>%
     .groups = "drop"
   )
 
+# check pairs 
+main_minor <- candidate_pairs %>%
+  filter(Pair_Type == "main-minor")
+
+table(main_minor$Candidate2_MyNeta_education_numeric)
+table(main_minor$Candidate1_MyNeta_education_numeric)
+4000+15000+15000+3000
+572+6000+6172+16275
+
+
+
 plot_data <- bind_rows(
   decoy_by_pair_type %>% 
     dplyr::select(Consolidated_Pair_Type, percentage = pct_decoy) %>%
@@ -374,6 +385,20 @@ plot_data <- bind_rows(
     dplyr::select(Consolidated_Pair_Type, percentage = pct_elections_with_decoys) %>%
     mutate(metric = "% of Elections with Decoys")
 )
+
+illiterate_minor_candidates <- candidate_pairs %>%
+  filter(Pair_Type %in% c("Main-Minor", "Minor-Main")) %>%
+  mutate(
+    minor_illiterate = case_when(
+      Pair_Type == "Main-Minor" & Candidate2_MyNeta_education == 0 ~ TRUE,
+      Pair_Type == "Minor-Main" & Candidate1_MyNeta_education == 0 ~ TRUE,
+      TRUE ~ FALSE
+    )
+  ) %>%
+  dplyr::group_by(Pair_Type) %>%
+  dplyr::summarize(
+    pct_illiterate_minor = mean(minor_illiterate, na.rm = TRUE) * 100
+  )
 
 ggplot(plot_data, aes(x = Consolidated_Pair_Type, y = percentage, fill = metric)) +
   geom_bar(stat = "identity", position = "dodge") +
@@ -397,6 +422,8 @@ ggsave(
   device = "png", 
   bg = "white"
 )
+
+
 
 ### Sensitivity of decoy numbers around 99th percentile
 # function to analyze decoys at given percentile thresholds

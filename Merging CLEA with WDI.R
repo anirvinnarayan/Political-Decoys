@@ -93,7 +93,7 @@ str(WDI_extract_1)
 
 # first, pivot WDI_extract_1 to long
 WDI_long <- WDI_extract_1 %>%
-  select(Country.Name, Country.Code, Series.Name, Series.Code, starts_with("X")) %>%
+  dplyr::select(Country.Name, Country.Code, Series.Name, Series.Code, starts_with("X")) %>%
   # convert from wide to long
   pivot_longer(
     cols = starts_with("X"),
@@ -141,7 +141,7 @@ candidate_pairs_CLEA_full <- candidate_pairs_CLEA_full %>%
             by = c("Country_Code")) %>%
   left_join(
     elections_with_sub %>%
-      select(Country_Code, Year, Election_Month, Constituency_Name, Election_ID, State),
+      dplyr::select(Country_Code, Year, Election_Month, Constituency_Name, Election_ID, State),
     by = c("Country_Code", "Year", "Election_Month", "Constituency_Name", "Election_ID")
   )
 
@@ -186,7 +186,7 @@ str(candidate_pairs_CLEA_cleaned)
 
 # create two separate dataframes for candidate1 and candidate2, getting unique candidates from each side
 candidates1 <- candidate_pairs_CLEA_cleaned %>%
-  select(Year, Country_Code, Country_Name, 
+  dplyr::select(Year, Country_Code, Country_Name, 
          Candidate_Name = Candidate1_Name, 
          Candidate_Party_Code = Candidate1_Party_Code,
          Candidate_Party_Name = Candidate1_Party_Name,
@@ -197,7 +197,7 @@ candidates1 <- candidate_pairs_CLEA_cleaned %>%
   distinct()
 
 candidates2 <- candidate_pairs_CLEA_cleaned %>%
-  select(Year, Country_Code, Country_Name, 
+  dplyr::select(Year, Country_Code, Country_Name, 
          Candidate_Name = Candidate2_Name, 
          Candidate_Party_Code = Candidate2_Party_Code,
          Candidate_Party_Name = Candidate2_Party_Name,
@@ -210,7 +210,7 @@ candidates2 <- candidate_pairs_CLEA_cleaned %>%
 # first, identify all decoy pairs
 decoy_pairs <- candidate_pairs_CLEA_cleaned %>%
   filter(is_decoy == TRUE) %>%
-  select(
+  dplyr::select(
     candidate1_id = Candidate1_Election_ID,
     candidate2_id = Candidate2_Election_ID,
     decoy_relationship = Pair_Type
@@ -219,7 +219,7 @@ decoy_pairs <- candidate_pairs_CLEA_cleaned %>%
 # extract all unique candidates
 all_candidates <- bind_rows(
   candidate_pairs_CLEA_cleaned %>%
-    select(Year, Country_Code, Country_Name, 
+    dplyr::select(Year, Country_Code, Country_Name, 
            Candidate_Name = Candidate1_Name, 
            Candidate_Party_Code = Candidate1_Party_Code,
            Candidate_Party_Name = Candidate1_Party_Name,
@@ -230,7 +230,7 @@ all_candidates <- bind_rows(
            State = State, 
            Constituency_Name = Constituency_Name),
   candidate_pairs_CLEA_cleaned %>%
-    select(Year, Country_Code, Country_Name, 
+    dplyr::select(Year, Country_Code, Country_Name, 
            Candidate_Name = Candidate2_Name, 
            Candidate_Party_Code = Candidate2_Party_Code,
            Candidate_Party_Name = Candidate2_Party_Name,
@@ -244,12 +244,12 @@ all_candidates <- bind_rows(
 
 # mark candidates as decoys if they appear in either side of a decoy pair
 decoy_candidates1 <- decoy_pairs %>%
-  select(Candidate_Election_ID = candidate1_id, 
+  dplyr::select(Candidate_Election_ID = candidate1_id, 
          decoy_for_id = candidate2_id,
          decoy_relationship)
 
 decoy_candidates2 <- decoy_pairs %>%
-  select(Candidate_Election_ID = candidate2_id, 
+  dplyr::select(Candidate_Election_ID = candidate2_id, 
          decoy_for_id = candidate1_id,
          decoy_relationship)
 
@@ -258,7 +258,7 @@ all_decoy_candidates <- bind_rows(decoy_candidates1, decoy_candidates2)
 
 # get the names of candidates who are decoys for
 decoy_for_names <- all_candidates %>%
-  select(Candidate_Election_ID, decoy_for_name = Candidate_Name)
+  dplyr::select(Candidate_Election_ID, decoy_for_name = Candidate_Name)
 
 # join decoy information with all candidates
 candidate_level <- all_candidates %>%
@@ -442,7 +442,7 @@ country_ngram_counts <- candidate_level_with_WDI %>%
 # candidate_level_with_WDI <- candidate_level_with_WDI %>%
 #   left_join(
 #     country_ngram_counts %>%
-#       select(Country_Name, ngram_counts),
+#       dplyr::select(Country_Name, ngram_counts),
 #     by = "Country_Name"
 #   ) %>%
 #   rowwise() %>%
@@ -459,7 +459,7 @@ country_ngram_counts <- candidate_level_with_WDI %>%
 #     }))
 #   ) %>%
 #   ungroup() %>%
-#   dplyr::select(-name_ngrams, -ngram_counts)
+#  dplyr::select(-name_ngrams, -ngram_counts)
 
 # doing the same thing, but leveraging already existing name separators
 # split names by both space and comma separators
@@ -484,15 +484,23 @@ country_component_frequencies <- candidate_level_with_WDI %>%
     relative_frequency = component_frequency / country_total_components
   )
 
-common_threshold <- 0.01
+# Collapse country_component_frequencies by country - average relative frequency
+country_summary <- country_component_frequencies %>%
+  group_by(Country_Name) %>%
+  dplyr::summarize(
+    avg_relative_frequency = mean(relative_frequency),
+    .groups = 'drop'
+  )
+
+common_threshold <- 0.1
 
 common_components <- country_component_frequencies %>%
   filter(relative_frequency >= common_threshold) %>%
-  select(Country_Name, name_components)
+  dplyr::select(Country_Name, name_components)
 
 # create a lookup table by joining components to their frequencies once
 name_component_lookup <- candidate_level_with_WDI %>%
-  select(Candidate_Election_ID, Country_Name, name_components) %>%
+  dplyr::select(Candidate_Election_ID, Country_Name, name_components) %>%
   unnest(name_components) %>%
   filter(nchar(name_components) > 1) %>%
   # join with frequency information
@@ -520,15 +528,7 @@ component_summary <- name_component_lookup %>%
 # join back to main dataset
 candidate_level_with_WDI <- candidate_level_with_WDI %>%
   left_join(component_summary, by = "Candidate_Election_ID") %>%
-  select(-name_components)
-
-candidate_level_with_WDI <- candidate_level_with_WDI %>%
-  dplyr::select(-has_common_component.x, -common_component_score.x, -pct_common_components.x) %>%
-  rename(
-    has_common_component = has_common_component.y, 
-    common_component_score = common_component_score.y, 
-    pct_common_components = pct_common_components.y
-  )
+  dplyr::select(-name_components)
 
 ### Final Preps
 # constituency name for clustering
